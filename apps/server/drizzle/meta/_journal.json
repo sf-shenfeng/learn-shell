@@ -1,0 +1,321 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1782656459270,
+      "tag": "0000_unique_ultragirl",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782713217310,
+      "tag": "0001_same_mockingbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782722303728,
+      "tag": "0002_productive_rachel_grey",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782728651579,
+      "tag": "0003_ambiguous_madelyne_pryor",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782728747667,
+      "tag": "0004_regular_rumiko_fujikawa",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782747977180,
+      "tag": "0005_smiling_alice",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782813845279,
+      "tag": "0006_stage_7d_layer_bridge",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782819293367,
+      "tag": "0007_stage_7d_fix_adhoc_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782826302934,
+      "tag": "0008_stage_7e_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783130597604,
+      "tag": "0009_update_lesson_revisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783162050923,
+      "tag": "0010_adhoc_thread_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783230582605,
+      "tag": "0011_flashcard_paused",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783304813732,
+      "tag": "0012_lesson_annotations",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783422587724,
+      "tag": "0013_lethal_lizard",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1783428604125,
+      "tag": "0014_sticky_frightful_four",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1783433154784,
+      "tag": "0015_sticky_spectrum",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1783512275703,
+      "tag": "0016_clever_ares",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783566441472,
+      "tag": "0017_last_wiccan",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783604866285,
+      "tag": "0018_teaching_attribution",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1783668893039,
+      "tag": "0019_syllabus_registry",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1783699216685,
+      "tag": "0020_overjoyed_moira_mactaggert",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1783779457528,
+      "tag": "0021_ambitious_harpoon",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1783865857528,
+      "tag": "0022_publish_gate",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1783865957528,
+      "tag": "0023_close_loop_no_cognitive_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784038357528,
+      "tag": "0024_modality_declarations",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784125557528,
+      "tag": "0025_contract_cadence",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1784211957528,
+      "tag": "0026_live_session_annotation_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1784212057528,
+      "tag": "0027_contract_void",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784298457528,
+      "tag": "0028_move_type_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1784384857528,
+      "tag": "0029_bridge_delivery_cursors",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1784471257528,
+      "tag": "0030_state_axes",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1784557657528,
+      "tag": "0031_confidence_anchor_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1784644057528,
+      "tag": "0032_course_planned_lesson_count",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1784730457528,
+      "tag": "0033_revision_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1784816857528,
+      "tag": "0034_adhoc_ack_cursor",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1784903257528,
+      "tag": "0035_reflection_anchor",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1784989657528,
+      "tag": "0036_live_session_active_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1785076057528,
+      "tag": "0037_pages_visited",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1785162457528,
+      "tag": "0038_feedback_pen",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1785248857528,
+      "tag": "0039_exercise_tags",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1785335257528,
+      "tag": "0040_source_material",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1785421657528,
+      "tag": "0041_hypothesis_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1785508057528,
+      "tag": "0042_first_run_onboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1785594457528,
+      "tag": "0043_idempotency_claim_first",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1785680857528,
+      "tag": "0044_evidence_channels",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+-- 迁移 0036: live_sessions 加部分唯一索引 (pair_id, context_type, context_id)
+-- WHERE status='active' —— 开课原子去重 (红队第六轮针一, 2026-07-20)。
+--
+-- 背景: live_session_start (mcp/server.ts) 与 POST /sessions
+-- (routes/teaching.ts) 此前都是"先查有没有同键 active 会话, 没有就插入"两步
+-- 走, 中间没有原子性——两个并发请求都在"没有"那一刻读到空, 各自插入, 撞出
+-- 同一 (pair, context) 下两条并存的 active 教室。这张索引把"同一课同一时刻
+-- 只许一间在开着的教室"从服务端逻辑层的自觉挪到数据库约束层, 撞键的第二个
+-- 写入方直接吃 23505, 由调用方 catch 住回查既有行返回(见两处调用点头注)。
+--
+-- 迁移前提检查 (2026-07-20): 上线前查过现库 —— 按 (pair_id, context_type,
+-- context_id) 分组统计 status='active' 的行数, 0 组 count>1。这与"静默令
+-- 期间服务端逻辑层一直在保证 active≤1"的既有事实一致 (这张索引是把已经
+-- 恒成立的不变量钉死, 不是纠正一个已经违反的现实)。若你在别的环境跑这个
+-- 迁移撞上冲突, 那不是 bug——是这条不变量在你的现库里已经被破坏过, 迁移
+-- 失败本身就是正确的守卫行为(先手工消掉多余的 active 行, 再重跑)。
+--
+-- 部分索引 (WHERE status='active'): 只在 active 态互斥, 其余态 (completed/
+-- cancelled/expired) 允许同 (pair, context) 下并存多行——一课可以横跨多场
+-- 已完成/已取消的历史 Live, 只是同一时刻只能有一场"正开着"。
+--
+-- schema 层不表达: 本仓 drizzle-orm(0.36) 的 uniqueIndex builder 支持
+-- .where(sql`...`) 分部索引写法, 但截至本迁移仓内没有任何一处部分索引先例
+-- 可循(既有 uniqueIndex 用例——teaching_moves_session_seq_uniq /
+-- bridge_delivery_cursors_pair_consumer_uniq——都是全表唯一, 无 WHERE 子句)。
+-- 没有先例可抄的情况下, 不在 schema.ts 里发明一份没有走过 drizzle-kit
+-- generate 检验的写法——这条约束只以这张手写迁移为准, src/db/schema/
+-- teaching.ts 的 live_sessions 定义原样不动, 靠这条注释留痕指路。
+CREATE UNIQUE INDEX IF NOT EXISTS "live_sessions_active_context_uniq"
+  ON "live_sessions" ("pair_id", "context_type", "context_id")
+  WHERE "status" = 'active';

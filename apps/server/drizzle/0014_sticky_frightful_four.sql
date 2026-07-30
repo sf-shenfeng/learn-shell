@@ -1,0 +1,1 @@
+ALTER TABLE "lesson_annotations" ADD COLUMN "orphaned_at" timestamp with time zone;

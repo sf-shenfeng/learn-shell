@@ -1,0 +1,23 @@
+-- 迁移 0035: teacher_reflections 加 lesson_id / live_session_id 两列 (反思挂锚,
+-- W1C)。均可空, 不加 FK —— 照本仓 cursor 类先例 (0029
+-- bridge_delivery_cursors / 0034 acked_message_id): 跨前缀 id 只按 genId
+-- 字符串存, 不建外键关系表; 存在性 + 同 pair 校验在代码层做 (mcp/server.ts
+-- reflect_on_teaching), 不靠 DB 约束兜底。
+--
+-- 背景: teacher_reflections 从建表起就只挂在 pair_id 上, 没有课粒度的锚点——
+-- close-loop-guard.ts 头注早就点破这个洞: "teacher_reflections 没有
+-- lesson_id/session_id 落点, 没法按'这节课'精确判定'是否已反思', 只能退而
+-- 求其次按 pair 粒度近似"。这张迁移把锚点补上, 下一任老师(或同一个老师换个
+-- session)才能按课读回"这节课到底反思过没有", 不必再靠"pair 自上一次关课
+-- 起是否写过反思"这种粗粒度猜测。
+--
+-- 回填: from_session_id 本列自建表起恒为 null (代码从未写过它, 见
+-- reflect_on_teaching 写入路径), 无从推导任何一条存量反思属于哪节课/哪场
+-- Live —— 存量行的 lesson_id / live_session_id 保持 null。这不是遗漏, 是
+-- 诚实: 锚点语义自本迁移起才存在, 历史反思本来就是 pair 级记录, 不该被
+-- 编造出一个假锚点。下游判定 (close_lesson_loop / pickCloseLoopNextActions)
+-- 走双轨——挂锚存在则精确判定, 挂锚为 null 则回落现行 pair 级近似, 见
+-- lib/close-loop-guard.ts。
+ALTER TABLE "teacher_reflections" ADD COLUMN IF NOT EXISTS "lesson_id" text;
+--> statement-breakpoint
+ALTER TABLE "teacher_reflections" ADD COLUMN IF NOT EXISTS "live_session_id" text;

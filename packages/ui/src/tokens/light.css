@@ -1,0 +1,45 @@
+/* Light theme tokens — values per design ARCHITECTURE.md token table.
+ * Token namespace: --ls-* (design system). */
+
+:root,
+:root[data-theme='light'] {
+  /* ---------- Surface ---------- */
+  --ls-bg: #ffffff;
+  --ls-bg-subtle: #fafafa;
+  --ls-panel: #f7f7f7;
+  --ls-panel-strong: #ededed;
+  --ls-border: #eaeaea;
+  --ls-border-strong: #d4d4d4;
+
+  /* ---------- Text ---------- */
+  --ls-text: #111111;
+  --ls-text-secondary: #666666;
+  --ls-text-tertiary: #999999;
+
+  /* ---------- Semantic (used sparingly: status dots, thin borders, tags, chart accents) ---------- */
+  --ls-structure: #0070f3; /* link / system structure */
+  --ls-hypothesis: #b7791f; /* amber — Agent working hypothesis */
+  --ls-corroborated: #1a7f37; /* green — multi-round verified / mastered */
+  --ls-risk: #d1242f; /* red — risk / paused / weak */
+
+  /* Reader body-copy links (Markdown `<a>` inside Reading/document content).
+   * ~6.7:1 against --ls-bg (#ffffff) — distinct from --ls-structure so the
+   * reading module's inline-link color can be tuned independently of the
+   * chrome/system-status blue. */
+  --ls-link: #1d4ed8;
+
+  /* ---------- Backed tints for hypothesis / corroborated panels ---------- */
+  --ls-hyp-tint: #fffbf0; /* faint amber wash */
+  --ls-grn-tint: #f3fbf4; /* faint green wash */
+
+  /* ---------- Radius ---------- */
+  --ls-radius-card: 8px;
+  --ls-radius-control: 6px;
+  --ls-radius-panel: 10px;
+  --ls-radius-pill: 999px;
+
+  /* ---------- Motion ---------- */
+  --ls-easing: cubic-bezier(0.16, 1, 0.3, 1); /* ease-out */
+  --ls-duration-fast: 120ms;
+  --ls-duration-base: 180ms;
+}

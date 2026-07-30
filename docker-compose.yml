@@ -1,0 +1,42 @@
+# Learn Shell · self-host docker compose
+#
+# 只起本地 Postgres 16 (apps/server 在宿主上跑).
+# apps/web 在开发期用 Vite dev (:5173); 生产可单独 build 静态 + nginx 托管.
+#
+# Quick start (任何 mac / linux) — 与 README "For humans" / SETUP.md 同源, 六步一步不能少:
+#   docker compose up -d
+#   cp apps/server/.env.example apps/server/.env    # 不可省: DATABASE_URL 代码里没有缺省值
+#   pnpm install                                    # 不可省: 下面几条 pnpm 命令要先有 node_modules
+#   pnpm --filter @learn-shell/server db:migrate
+#   pnpm --filter @learn-shell/server dev   # :3000
+#   pnpm --filter @learn-shell/web dev      # :5173
+#
+# 关于第 2 步: 下面 environment 块里的 POSTGRES_* 只注进 postgres 容器,
+# 注不到你宿主上的 pnpm 进程。宿主侧的 DATABASE_URL 得自己给, 且代码里没有
+# 缺省值可以回退——每个 db 入口缺了它就拒绝启动 (db/require-database-url.ts)。
+# .env.example 里的连接串与本文件的 POSTGRES_* 对得上, 照抄即可。
+
+services:
+  postgres:
+    # docker.m.daocloud.io mirror for Docker Hub (GFW-friendly).
+    # Same image content as `postgres:16-alpine`, just resolved via mirror.
+    image: docker.m.daocloud.io/library/postgres:16-alpine
+    container_name: learn-shell-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: learn_shell
+      POSTGRES_USER: learn_shell
+      POSTGRES_PASSWORD: learn_shell_dev # dev only; prod 通过 .env 覆盖
+    ports:
+      - '127.0.0.1:5432:5432' # 只绑本机; LAN 需显式改绑 (如 '0.0.0.0:5432:5432')
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U learn_shell -d learn_shell']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
+    name: learn-shell-postgres-data

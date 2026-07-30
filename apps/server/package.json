@@ -1,0 +1,38 @@
+{
+  "name": "@learn-shell/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc && tsc-alias -p tsconfig.json",
+    "start": "node --import ./scripts/register-esm-hooks.mjs dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "test:e2e": "node scripts/e2e-first-run.mjs",
+    "lint": "echo '[lint] @learn-shell/server: no linter (eslint/biome) configured yet — failing explicitly instead of reporting a false pass. See P2-01 follow-up.' 1>&2 && exit 1",
+    "clean": "rm -rf dist node_modules drizzle/meta",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed:demo": "tsx src/db/seed.ts",
+    "db:seed": "tsx src/db/seed.ts",
+    "db:studio": "drizzle-kit studio",
+    "mcp": "tsx src/mcp/server.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@learn-shell/contracts": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "drizzle-orm": "^0.36.0",
+    "hono": "^4.6.0",
+    "postgres": "^3.4.5",
+    "ts-fsrs": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "drizzle-kit": "^0.28.0",
+    "tsc-alias": "^1.9.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

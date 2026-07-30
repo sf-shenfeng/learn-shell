@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<rect width="512" height="512" rx="0" fill="#111111"/>
+<defs><linearGradient id="d" x1="0" y1="52.4" x2="0" y2="459.6" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5a5a5a"/><stop offset="1" stop-color="#262626"/></linearGradient></defs>
+<circle cx="256.0" cy="71.7" r="9.6" fill="#ffffff"/>
+<circle cx="176.2" cy="117.8" r="9.6" fill="#ffffff"/>
+<circle cx="335.8" cy="117.8" r="9.6" fill="url(#d)"/>
+<circle cx="96.4" cy="163.8" r="9.6" fill="#ffffff"/>
+<circle cx="256.0" cy="163.8" r="9.6" fill="url(#d)"/>
+<circle cx="415.6" cy="163.8" r="9.6" fill="#ffffff"/>
+<circle cx="176.2" cy="209.9" r="9.6" fill="#ffffff"/>
+<circle cx="335.8" cy="209.9" r="9.6" fill="#ffffff"/>
+<circle cx="256.0" cy="256.0" r="9.6" fill="#ffffff"/>
+<circle cx="415.6" cy="256.0" r="9.6" fill="#ffffff"/>
+<circle cx="96.4" cy="256.0" r="9.6" fill="url(#d)"/>
+<circle cx="335.8" cy="302.1" r="9.6" fill="url(#d)"/>
+<circle cx="176.2" cy="302.1" r="9.6" fill="url(#d)"/>
+<circle cx="256.0" cy="348.2" r="9.6" fill="url(#d)"/>
+<circle cx="415.6" cy="348.2" r="9.6" fill="#ffffff"/>
+<circle cx="96.4" cy="348.2" r="9.6" fill="url(#d)"/>
+<circle cx="335.8" cy="394.2" r="9.6" fill="#ffffff"/>
+<circle cx="176.2" cy="394.2" r="9.6" fill="url(#d)"/>
+<circle cx="256.0" cy="440.3" r="9.6" fill="#ffffff"/>
+</svg>

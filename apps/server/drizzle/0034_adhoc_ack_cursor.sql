@@ -1,0 +1,24 @@
+-- 迁移 0034: ad_hoc_threads 加 acked_message_id 列（AdHoc 三票并一之二 ——
+-- 消账游标，2026-07-19）。
+--
+-- 背景：学习者说"不用回了"之后，那条消息此前会长期占据 teacher inbox /
+-- bridge pending，下任老师可能又来回一嘴——消账手段一直缺失。
+--
+-- 语义：MCP 工具 adhoc_ack 把某个 thread 消账到某条消息 id（缺省=消账到该
+-- thread 当前最新一条）。此后 pending 扫描三处（lib/live-wait.ts
+-- computeBridgeWaitEvents 共享 helper isAdhocMessageOutstanding / mcp/
+-- server.ts live_pending / routes/teaching.ts GET /bridge/pending）与
+-- lib/teacher-inbox.ts 的 adhoc 段，都把"晚于 acked_message_id 的新消息"
+-- 才算真正待办——已消账的旧消息不再反复占用值更循环，但消息本身永久保留
+-- 在 ad_hoc_messages，消账只挪游标不删数据。
+--
+-- null = 从未消账（存量线程与新建线程一律回退到这个状态，pending 判定完全
+-- 不受影响 —— isNewerEventId(candidateId, '') 恒真，同 live-wait.ts 头注既
+-- 定的"''=无游标, 一切皆新"哨兵语义）。
+--
+-- 不加 FK 约束——同 bridge_delivery_cursors / live-wait.ts 里 event_id 的
+-- 既定风格（跨前缀 id 只按 genId 字符串存, 不建外键关系表），
+-- acked_message_id 允许指向一条已被硬删除的消息（DELETE
+-- /api/adhoc/messages/:id）而不报错——那种情况下"游标晚于任何现存消息"这条
+-- 语义仍然成立，不需要级联清空。
+ALTER TABLE "ad_hoc_threads" ADD COLUMN IF NOT EXISTS "acked_message_id" text;

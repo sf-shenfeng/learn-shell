@@ -1,0 +1,1 @@
+ALTER TABLE "teaching_contracts" ADD COLUMN "skill_stack" jsonb;

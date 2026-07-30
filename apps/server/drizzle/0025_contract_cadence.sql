@@ -1,0 +1,17 @@
+-- Contract 2.0 · cadence 条款 — teaching_contracts 加 cadence jsonb 可空。
+--
+-- 产品语义: 签约时学习者决定学习节奏——定时(scheduled) 或碎片化(fragmented);
+-- 定时者可约固定时段(slots)、是否提醒(reminders)、提醒触发时 agent 是否自动
+-- 上岗值更(auto_duty)。提醒本身不由 LS 发出——LS 无推送通道且不该造这一层,
+-- 只存约定 + 亮约定, 立钟(设日历/闹钟等实际提醒动作)由 agent/user 在原生
+-- 工具里完成。碎片化学习者也可带 weekly_review_nudge——温和周复习提醒意愿,
+-- 语义同上不涉真实发送。
+--
+-- 形状: {mode:'scheduled'|'fragmented', slots?:[{weekday:0-6, time:'HH:MM',
+-- tz:string}], reminders:'native'|'none', auto_duty:boolean,
+-- weekly_review_nudge?:boolean, updated_at?:string}。updated_at 是
+-- update_contract_cadence 修约时的内嵌留痕(合同无 revision/history 表)。
+--
+-- 与既有 pace 列(daily/weekly/flexible 粗分类)并存, 不是替换——旧数据不受
+-- 影响。可空——未谈节奏条款的合同(以及本迁移前的存量行)留 null。
+ALTER TABLE "teaching_contracts" ADD COLUMN IF NOT EXISTS "cadence" jsonb;

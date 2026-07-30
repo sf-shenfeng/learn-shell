@@ -1,0 +1,71 @@
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+secrets/
+*.pem
+*.key
+
+# Build / dist
+node_modules/
+dist/
+build/
+.next/
+.svelte-kit/
+.nuxt/
+.output/
+.turbo/
+.cache/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Database (SQLite local dev)
+*.sqlite
+*.sqlite3
+*.db
+
+# Tests / coverage
+.coverage
+coverage/
+htmlcov/
+
+# TS incremental build cache
+*.tsbuildinfo
+
+# Server .env (secrets)
+apps/server/.env
+
+# Docker volume data (if mounted to bind path instead of named volume)
+.docker/
+
+# OS noise
+Thumbs.db
+desktop.ini
+
+# Whisper personal vocabulary — per-user dictionary (portfolio tickers,
+# people's names, project codes). Never commit. See
+# apps/web/src/lib/whisper-terms.local.example.ts for the template.
+apps/web/src/lib/whisper-terms.local.ts
+
+# 家用文档防漏（Obsidian Vault/learn-shell 是指向本仓库根的符号链接——家事文件会经它落进仓库）
+/LS-严格审视-*.md
+/flashcards-首批试卡.md

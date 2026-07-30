@@ -1,0 +1,16 @@
+-- 迁移 0039: exercises.tags — 探针标签通道 (2026-07-22)。
+--
+-- 背景: 教学工作流 (skills/workflow/lesson-prep.md "探针与难度") 要求探针题
+-- 走 add_exercise 并打 ["probe"] 标, 且注明"零迁移, 复用既有 tags 数组字段"
+-- ——但那个既有 tags 字段是 flashcards 的; exercises 表从建表 (0000) 起就没有
+-- tags 列, add_exercise 的 inputSchema (additionalProperties:false) 一直拒收
+-- tags 参数。合同撕裂: 工作流承诺的通道在储层根本不存在。本迁移把通道补上
+-- ——jsonb 字符串数组, 形制照抄 flashcards.tags, 缺省 '[]'。
+--
+-- additive + idempotent: 只加列不回填 (存量习题无标签是事实, 不编造假标签,
+-- 同 0035/0038 的诚实原则); IF NOT EXISTS 使重复执行安全。不加 CHECK——
+-- 标签是自由字符串数组 ("probe" 只是当前唯一的约定值, 不是封闭枚举, 与
+-- 0028/0033/0038 那种封闭枚举收口不同类), 形状校验在代码层
+-- (validateOptionalStringArrayArg, mcp/server.ts add_exercise——与
+-- add_flashcard.tags 同一把尺)。
+ALTER TABLE "exercises" ADD COLUMN IF NOT EXISTS "tags" jsonb NOT NULL DEFAULT '[]'::jsonb;

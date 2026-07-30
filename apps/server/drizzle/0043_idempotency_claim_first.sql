@@ -1,0 +1,22 @@
+-- 迁移 0043: 幂等改"先声明后执行" + payload 指纹 (红队 P1-06)。
+--
+-- 现状(修前): lib/idempotency.ts 查 key → 执行业务 → 插 key, 三步无事务
+-- ("claim after write", 注释原文自认), 且不存入参指纹 —— 同 key 不同参数
+-- 会静默回放首次结果, 调用方以为在执行新请求, 实际拿到的是旧答案。
+--
+-- 本迁移只改表形状, 决策逻辑在 lib/idempotency.ts (decideClaimOutcome):
+--   1) response_json 去掉 NOT NULL —— claim-first 流程分两步写这一行:
+--      先 INSERT 声明 (response_json 暂空), 业务跑完再 UPDATE 回填。行存在但
+--      response_json 为空 = "声明了但还没交卷", 靠 created_at (声明时刻) 与
+--      60s 陈旧阈值区分"他方执行中, 稍后重试"还是"崩溃遗留, 可接管重跑"。
+--   2) 新增 payload_hash (可空 text) —— 对入参做稳定序列化(键排序)后
+--      sha256, 声明时一并写入。response_json 已回填的行, 重放前先比对此列:
+--      不匹配 ⇒ CONFLICT("同 key 不同载荷"), 匹配才回放。存量行(本迁移前
+--      写入)天然没有这一列, 值为 NULL —— 视为"无指纹在档", 不强行判不匹配,
+--      不因迁移本身制造出一批假冲突。
+--
+-- additive + idempotent: ADD COLUMN IF NOT EXISTS / DROP NOT NULL 对已执行过
+--的库重复执行无害 (照 0039/0042 先例); bench 先行 psql 应用 (本批仅
+-- bench, 不碰生产库), prod 部署时走同一份文件经 db:migrate。
+ALTER TABLE "idempotency_keys" ADD COLUMN IF NOT EXISTS "payload_hash" text;
+ALTER TABLE "idempotency_keys" ALTER COLUMN "response_json" DROP NOT NULL;

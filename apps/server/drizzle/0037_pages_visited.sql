@@ -1,0 +1,21 @@
+-- 迁移 0037: lesson_progress 加 pages_visited jsonb 列 (学习者裁决第三针,
+-- 2026-07-20) —— declare-completed 的 checklist 页数足迹修法。
+--
+-- 背景: 此前 POST /pairs/:pairId/lessons/:lessonId/declare-completed 的
+-- pages_read 完全信任客户端在调用那一刻传来的"当前页"数字 (见
+-- apps/web/src/lesson/PagedLesson.tsx 的 onProgress 回调 —— progressRef 本身
+-- 正确地维护了一个"这次挂载到过的最远页"高水位, 但喂给 onPagesRead 的却是
+-- 每次翻页触发的瞬时 frac, 不是那个高水位)。真实 bug: 学完全部 12 页后翻回
+-- 第 4 页复习, 此刻声明"已学完", 快照记成 4/12——回看复习被误记成"没学完"。
+--
+-- 修法: 不再相信"当前页"这个瞬时值, 改成服务端持有一个"到过哪些页"的集合
+-- (页码, 去重, 只增不减)。POST /lessons/:id/progress/touch 现在接受可选
+-- page_index, 每次学习者翻到一页就静默 touch 一次并入这个集合;
+-- declare-completed 的页数改算 |pages_visited ∪ {当前页}| / 总页数——即便
+-- 某次 touch 因为网络问题没送达, declare-completed 自己带的"当前页"也会兜底
+-- 并入集合, 不因为一次丢包就漏记这一页足迹。
+--
+-- jsonb 数组(int[] 的页码集合), 不是关系表: 与本表 prerequisite_skips 既定的
+-- "小体量、按 pair×lesson 基数增长、不必单独建表"同一风格——一课的页数是个
+-- 位数很小的数字, 犯不上为它开一张 (pair_id, lesson_id, page_index) 关系表。
+ALTER TABLE "lesson_progress" ADD COLUMN IF NOT EXISTS "pages_visited" jsonb NOT NULL DEFAULT '[]';

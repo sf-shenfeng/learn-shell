@@ -1,0 +1,13 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+allowBuilds:
+  esbuild: true
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: true
+
+# pnpm v11: explicitly allow esbuild build scripts (Vite's bundler, trusted)
+onlyBuiltDependencies:
+  - esbuild

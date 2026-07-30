@@ -1,0 +1,18 @@
+-- 迁移 0040: teaching_contracts.source_material — 自带教材条款 (2026-07-22)。
+--
+-- 背景: 学习者自带教科书 (EPUB/PDF) 来学。产品裁决: LS 不建任何文件解析器
+-- ——书由 agent 的宿主读, agent 负责拆解 (课程骨架 = 书的骨架, lessons = 章节,
+-- add_document 存每章蒸馏, source_refs 锚到章/页)。合同是文书不是引擎: 这一列
+-- 只记立约对话谈定的教材条款 {title, author?, year?, reliance}; 行为语义住
+-- recipes (recipe://first-contract-and-lesson 教材摄取段 + skill
+-- workflow/lesson-prep 教材模式), learner brief / get_context 负责亮灯。
+-- reliance 三档: strict(严格,100%: 结构/顺序/口径全随书,只讲解不延伸) /
+-- anchored(锚定,~80%: 骨架随书,每课留外延余地) / inspired(启发,~60%: 书是
+-- 出发点,可重组可大幅外延)。
+--
+-- additive + idempotent: 只加列不回填 (存量合约没谈过教材条款, null 是事实,
+-- 同 0035/0038/0039 的诚实原则); IF NOT EXISTS 使重复执行安全。可空——未谈
+-- 教材的合约恒 null。不加 CHECK——内层形状校验在代码层
+-- (lib/source-material.ts validateSourceMaterialArg, 与 cadence 的
+-- validateCadenceArg 同一路数: jsonb 列无 DB 层类型强制, 形状在写入口把死)。
+ALTER TABLE "teaching_contracts" ADD COLUMN IF NOT EXISTS "source_material" jsonb;

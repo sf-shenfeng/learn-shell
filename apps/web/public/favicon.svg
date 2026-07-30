@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<rect width="64" height="64" rx="14" fill="#111111"/>
+<defs><linearGradient id="d" x1="0" y1="6.6" x2="0" y2="57.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5a5a5a"/><stop offset="1" stop-color="#262626"/></linearGradient></defs>
+<circle cx="32.0" cy="9.0" r="1.2" fill="#ffffff"/>
+<circle cx="22.0" cy="14.7" r="1.2" fill="#ffffff"/>
+<circle cx="42.0" cy="14.7" r="1.2" fill="url(#d)"/>
+<circle cx="12.0" cy="20.5" r="1.2" fill="#ffffff"/>
+<circle cx="32.0" cy="20.5" r="1.2" fill="url(#d)"/>
+<circle cx="52.0" cy="20.5" r="1.2" fill="#ffffff"/>
+<circle cx="22.0" cy="26.2" r="1.2" fill="#ffffff"/>
+<circle cx="42.0" cy="26.2" r="1.2" fill="#ffffff"/>
+<circle cx="32.0" cy="32.0" r="1.2" fill="#ffffff"/>
+<circle cx="52.0" cy="32.0" r="1.2" fill="#ffffff"/>
+<circle cx="12.0" cy="32.0" r="1.2" fill="url(#d)"/>
+<circle cx="42.0" cy="37.8" r="1.2" fill="url(#d)"/>
+<circle cx="22.0" cy="37.8" r="1.2" fill="url(#d)"/>
+<circle cx="32.0" cy="43.5" r="1.2" fill="url(#d)"/>
+<circle cx="52.0" cy="43.5" r="1.2" fill="#ffffff"/>
+<circle cx="12.0" cy="43.5" r="1.2" fill="url(#d)"/>
+<circle cx="42.0" cy="49.3" r="1.2" fill="#ffffff"/>
+<circle cx="22.0" cy="49.3" r="1.2" fill="url(#d)"/>
+<circle cx="32.0" cy="55.0" r="1.2" fill="#ffffff"/>
+</svg>

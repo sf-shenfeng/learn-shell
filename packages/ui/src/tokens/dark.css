@@ -1,0 +1,33 @@
+/* Dark theme tokens — values per design ARCHITECTURE.md token table.
+ * Token namespace: --ls-*. Only color tokens differ from light;
+ * radius/motion inherit from light.css. */
+
+:root[data-theme='dark'] {
+  /* ---------- Surface ---------- */
+  --ls-bg: #000000;
+  --ls-bg-subtle: #0a0a0a;
+  --ls-panel: #111111;
+  --ls-panel-strong: #191919;
+  --ls-border: #262626;
+  --ls-border-strong: #3a3a3a;
+
+  /* ---------- Text ---------- */
+  --ls-text: #fafafa;
+  --ls-text-secondary: #a3a3a3;
+  --ls-text-tertiary: #737373;
+
+  /* ---------- Semantic — same hues, slightly different tints for dark mode backing ---------- */
+  --ls-structure: #0070f3; /* link / system structure */
+  --ls-hypothesis: #b7791f; /* amber — Agent working hypothesis */
+  --ls-corroborated: #1a7f37; /* green — multi-round verified / mastered */
+  --ls-risk: #d1242f; /* red — risk / paused / weak */
+
+  /* Reader body-copy links — lightened for dark backing, ~8.3:1 against
+   * --ls-bg (#000000). See light.css for why this is its own token instead
+   * of reusing --ls-structure. */
+  --ls-link: #60a5fa;
+
+  /* ---------- Backed tints — dark variants ---------- */
+  --ls-hyp-tint: #16110a; /* deep amber tint */
+  --ls-grn-tint: #0a140c; /* deep green tint */
+}

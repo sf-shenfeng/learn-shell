@@ -1,0 +1,21 @@
+-- Teaching Contract 作废机制 (Void, not delete — 审计留痕).
+--
+-- 语义: voided = active=false AND voided_at IS NOT NULL. void_reason 记录
+-- 作废理由原文。作废权双方都有——学习者在 /contract(实际落地页见
+-- apps/web/src/pages/Settings.tsx 的证书区/档案区, 见本迁移同批报告里的
+-- 现实偏差记录) 点, agent 走 MCP void_contract 工具, 但 agent 侧调用前
+-- 必须先把作废理由原文给学习者看过、取得学习者逐字同意
+-- (learner_consent) —— 见 mcp/server.ts void_contract 工具的 description。
+--
+-- active 列本身是已退休的历史遗留字段 (从未被"当前合约"选择逻辑
+-- 真正读取——见 apps/server/src/lib/currentContract.ts 的头注), 这里仍照
+-- 规格把它一并置 false 留作字面语义完整, 但真正驱动"当前合约"查询排除
+-- 作废行的信号是 voided_at (currentContract.ts 的 isCurrentEligible 已
+-- 同步加了这道过滤)。
+--
+-- 不删除: 作废后的合约行原样保留, 只是从"当前合约"选择结果 (get_context /
+-- pickSkillStack / pair://contract/active / ical-token rotate 等一切走
+-- lib/currentContract.ts 的查询) 里出局, 幂等: 重复 void 同一份已作废的
+-- 合约返回其已作废状态, 不报错、不二次写入。
+ALTER TABLE "teaching_contracts" ADD COLUMN IF NOT EXISTS "voided_at" timestamp with time zone;
+ALTER TABLE "teaching_contracts" ADD COLUMN IF NOT EXISTS "void_reason" text;

@@ -1,0 +1,1 @@
+ALTER TABLE "lesson_annotations" ALTER COLUMN "lesson_id" DROP NOT NULL;

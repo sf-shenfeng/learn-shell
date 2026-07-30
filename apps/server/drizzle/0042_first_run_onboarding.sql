@@ -1,0 +1,25 @@
+-- 迁移 0042: 首跑入学 + 下课铃二期 —— 一次做完两件 (2026-07-23)。
+--
+-- 件一: learner_agent_pairs.is_demo —— pair 的出生记录 (样板间户口)。
+--   demo pair = 样板间: 给开源陌生人装机头十分钟的"证明活着", 显式可选,
+--   永不作为真实关系的前置。
+--   本体是数据列, 参与默认 pair 选择: 一切"当前 pair"隐式解析改为
+--   ORDER BY is_demo ASC, established_at ASC —— 真 pair 永远优先于样板间当选
+--   "当前关系" (资历优先规则之上叠一层身份优先; 资历仍是同身份内的次序)。
+--   回填不做: 既有行一律 is_demo=false 缺省 —— 存量库里的 pair (含历史上由
+--   db:seed 建立、已被真实使用的 pair_demo_cfa) 是不是样板间, 是部署方的
+--   判断, 不由迁移武断改写; 新 seed:demo 写入的行自带 is_demo=true。
+--
+-- 件二: live_sessions.learner_close_declared_at —— Live 收课宣告 (下课铃)。
+--   收课同意此前只活在对话里 (传闻证据, 收课握手是 recipe 法无机器锚)。
+--   这一列是学习者按下下课铃的机器正身: 谁按的不用记 (只有学习者侧有铃),
+--   何时按的记在这里。可空 —— null = 本场还没人摇铃。写入方唯一:
+--   POST /api/teaching/sessions/:id/declare-close (learner 侧, 幂等)。
+--   complete 门禁 (MCP live_session_complete / REST POST /complete):
+--   此列为空 ⇒ CONFLICT —— 决定下课的是学习者, 合上帷幕的是老师。
+--   cancel 不受此门 (取消≠收官)。
+--
+-- additive + idempotent: IF NOT EXISTS 使重复执行安全 (bench 先行 psql 应用,
+-- prod 由部署时 db:migrate 走同一份文件, 二次执行无害)。
+ALTER TABLE "learner_agent_pairs" ADD COLUMN IF NOT EXISTS "is_demo" boolean NOT NULL DEFAULT false;
+ALTER TABLE "live_sessions" ADD COLUMN IF NOT EXISTS "learner_close_declared_at" timestamptz;
