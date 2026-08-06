@@ -172,7 +172,7 @@ test('证据引用硬闸 + 0044 三通道/locale/live_response_id 贯通', { ski
     );
     await assert.rejects(
       () => assertSessionEventEvidence(pairId, [id('evt_other')]),
-      /无效证据 id/,
+      /invalid evidence id/,
       '他 pair 的真事件 = 本 pair 的幽灵 (归属校验)'
     );
 
@@ -191,9 +191,9 @@ test('证据引用硬闸 + 0044 三通道/locale/live_response_id 贯通', { ski
     await assertEvidenceRefs(pairId, [id('sub'), id('tr'), id('evt')]); // 多落点放行
     await assert.rejects(
       () => assertEvidenceRefs(pairId, [id('sub'), 'sub_ghost']),
-      /无效引用 id.*sub_ghost/s
+      /invalid reference id.*sub_ghost/s
     );
-    await assert.rejects(() => assertEvidenceRefs(otherPairId, [id('sub')]), /无效引用 id/);
+    await assert.rejects(() => assertEvidenceRefs(otherPairId, [id('sub')]), /invalid reference id/);
 
     // ---- ④ assertActionLinkTarget ----
     await assertActionLinkTarget(pairId, 'hypothesis_update', id('hyp'));
