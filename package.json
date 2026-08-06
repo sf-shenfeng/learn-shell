@@ -9,6 +9,7 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
+    "test": "pnpm -r --if-present run test",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules"
   },

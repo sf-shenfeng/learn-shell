@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Node / pnpm versions are read from the repo's own declarations, not
+# guessed: root package.json `engines.node` = ">=22", `packageManager` =
+# "pnpm@11.1.3".
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '11.1.3'
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (all packages)
+        run: pnpm typecheck
+
+      - name: Test — apps/web
+        run: pnpm --filter @learn-shell/web test
+
+      # No DATABASE_URL / RUN_DB_TESTS here on purpose: this job has no
+      # database, so the ~17 DB-backed tests in apps/server self-skip via
+      # their existing ping/RUN_DB_TESTS gates (see the db-tests job below
+      # for where those actually run).
+      - name: Test — apps/server (DB tests skip — no database in this job)
+        run: pnpm --filter @learn-shell/server test
+
+      - name: Build (all packages)
+        run: pnpm build
+
+  db-tests:
+    name: db-tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # DB name matches the /_bench$/ pattern enforced by
+          # apps/server/src/lib/require-bench-db.ts — every DB-touching
+          # test/migration calls that guard before writing, and it refuses
+          # to run against anything not named *_bench (see that file's
+          # 7/19 incident writeup for why).
+          POSTGRES_DB: learn_shell_bench
+          POSTGRES_USER: learn_shell
+          POSTGRES_PASSWORD: learn_shell_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U learn_shell -d learn_shell_bench"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://learn_shell:learn_shell_ci@localhost:5432/learn_shell_bench
+      # Flips the RUN_DB_TESTS=1-gated test files (evidence-refs.db.test.ts,
+      # hypothesis-lifecycle.db.test.ts, lesson-closure-facts.test.ts, etc.)
+      # from skip to actually running. The other DB-gated files in this repo
+      # (write.restore.test.ts, write.patch-lessons-publish-gate.test.ts,
+      # the REST half of live-session-transitions.test.ts) don't check this
+      # flag — they ping the DB directly in a `before()` hook and skip only
+      # if that ping fails, so a reachable DATABASE_URL is enough for those.
+      RUN_DB_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      # Always through the package's own pnpm script, never a direct
+      # node_modules/.bin/tsx call — this repo has a documented history of
+      # a stray tsx bin resolution issue that was fixed by moving tsx into
+      # devDependencies; going through `pnpm --filter ... run` keeps CI on
+      # the same resolution path as local dev.
+      - name: Run migrations against the bench database
+        run: pnpm --filter @learn-shell/server db:migrate
+
+      - name: Test — apps/server (DB tests run for real)
+        run: pnpm --filter @learn-shell/server test

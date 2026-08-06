@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "test:e2e": "node scripts/e2e-first-run.mjs",
-    "lint": "echo '[lint] @learn-shell/server: no linter (eslint/biome) configured yet — failing explicitly instead of reporting a false pass. See P2-01 follow-up.' 1>&2 && exit 1",
+    "lint": "biome check .",
     "clean": "rm -rf dist node_modules drizzle/meta",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
@@ -29,6 +29,7 @@
     "ts-fsrs": "^5.4.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.7",
     "@types/node": "^22.0.0",
     "drizzle-kit": "^0.28.0",
     "tsc-alias": "^1.9.1",
