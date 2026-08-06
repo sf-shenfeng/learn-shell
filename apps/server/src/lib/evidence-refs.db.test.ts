@@ -210,7 +210,7 @@ test('证据引用硬闸 + 0044 三通道/locale/live_response_id 贯通', { ski
     await assert.rejects(
       // 类型不匹配的落点: 真实存在的 lesson 不是 hypothesis_update 的合法落点。
       () => assertActionLinkTarget(pairId, 'hypothesis_update', id('lsn')),
-      /不存在或不属于当前 pair/
+      /does not exist or does not belong to the current pair/
     );
 
     // ---- checkLiveResponseRef ----
