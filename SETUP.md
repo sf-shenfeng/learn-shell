@@ -214,6 +214,18 @@ Open **http://localhost:5173**.
 
 ---
 
+## 5.6 Inspection mode (no database)
+
+Set `LS_INSPECT=1` when starting the MCP server to boot it with **no `DATABASE_URL` / no Postgres at all**:
+
+```bash
+LS_INSPECT=1 pnpm --filter @learn-shell/server mcp
+```
+
+`initialize`, `tools/list` (all ~50 tools + schemas), and static resources (`manifest://capabilities`, `recipe://*`) all work normally; any tool call that actually needs the database returns a clean, machine-readable error (`code: "PERMISSION"`, message starts with `inspection mode: no database attached`) instead of crashing. This is for automated registry/quality-check bots (e.g. Glama) that run the server in a container with no Postgres just to enumerate its capabilities — it is not a substitute for real use. Leave `LS_INSPECT` unset for normal operation (default behavior is unchanged).
+
+---
+
 ## 6. What will this cost in AI usage?
 
 Three separate bills, if your AI does the work:

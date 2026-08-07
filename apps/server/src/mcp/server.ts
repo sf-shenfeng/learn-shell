@@ -3516,6 +3516,41 @@ function assertValidDocumentSource(source: string): void {
   }
 }
 
+// ============================================================================
+// LS_INSPECT — 无库检视模式 (registry/automated-inspection 场景专用, 例如
+// Glama 质检机器人: 它会真的把这个进程跑起来枚举 tools/resources, 但它的
+// 容器里没有 Postgres)。
+//
+// 勘察结论 (工单要求先摸清链路再动刀):
+//   · initialize 握手 / ListToolsRequestSchema / manifest://capabilities /
+//     recipe:// 今天就是无库安全的 —— TOOL_DEFINITIONS 是字面量数组,
+//     listAllResourceDefinitions 只读 docs/recipes/*.md, db/client.ts 的池是
+//     惰性单例 (import 不触发连接, 见该文件头注)。这条路径不用改一行。
+//   · 唯一会撞库的路径是工具真调用: 除 create_pair 外全部 49 个工具在
+//     switch 之前都先 getCurrentPairId() 查 active pair, create_pair 自己也
+//     直接经 createPairForRegisteredLearner 写库 —— 这台服务器里没有一个
+//     "纯静态、调用时完全不碰库"的工具, 所以不需要逐工具甄别, 一个门就够。
+//   · 不拦这里的话, requireDatabaseUrl 会在 getCurrentPairId()/create_pair
+//     内部裸抛 `Error('DATABASE_URL is not set...')`, 一路冒到
+//     errorFromException 兜底分类成 RETRYABLE —— 语义上是错的 (库压根没接,
+//     同一次调用重试到天荒地老也不会成功), 而且消息里带着未经打磨的内部
+//     措辞。改用 PERMISSION (五族分类里"当前 scope/gate 下不允许"那一档,
+//     retryable 默认 false) 是诚实的分类, 不是新发明一档。
+//
+// LS_INSPECT 未设置(生产/日常开发默认)时 LS_INSPECT 恒为 false, 调用点是
+// 一次纯布尔判断——对既有路径零行为变化。
+const LS_INSPECT = process.env.LS_INSPECT === '1';
+
+function inspectionModeError(toolName: string): McpToolError {
+  return permissionError(
+    `inspection mode: no database attached — LS_INSPECT=1 disables every database-backed tool call on ` +
+      `purpose (this process was started with no DATABASE_URL / no Postgres attached, for registry/automated ` +
+      `inspection only). '${toolName}' needs a database and cannot execute for real in this mode.`,
+    { tool: toolName, ls_inspect: true },
+    'Not available under LS_INSPECT — restart the server with a real DATABASE_URL (and without LS_INSPECT) to invoke this tool for real.'
+  );
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args = {} } = req.params;
   try {
@@ -3540,6 +3575,13 @@ async function handleToolCall(
       `Unknown field '${unknownField.field_path}' — not part of ${name}'s inputSchema.`,
       { ...unknownField }
     );
+  }
+
+  // LS_INSPECT 无库检视模式 (见上方 inspectionModeError 注释) — 挡在
+  // create_pair 分流 / getCurrentPairId() 真正撞库之前, 每个工具统一走这一
+  // 处, 不需要逐 case 甄别。
+  if (LS_INSPECT) {
+    throw inspectionModeError(name);
   }
 
   // create_pair 是全服务器唯一"无 active pair 也能调"的工具: 它就是
