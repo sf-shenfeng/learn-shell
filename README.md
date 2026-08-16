@@ -2,7 +2,7 @@
 
 > Your AI is becoming the one who knows you best. Learn Shell gives it a classroom that remembers — an agent-native teaching OS that turns your AI's teaching intent into things a learner can actually study, practice against, and get graded on.
 
-**Codename**: `learn-shell` · **Status**: working system, actively dogfooded since 2026-07-02. Not authenticated. MIT-licensed; v1 is a single-machine, no-auth trust model.
+**Codename**: `learn-shell` · **Status**: working system, actively dogfooded since 2026-07-02. Not authenticated. AGPL-3.0 licensed (v0.x was MIT; relicensed 2026-08-16, see note below); v1 is a single-machine, no-auth trust model.
 
 **Setting this up from a code snapshot?** Follow [SETUP.md](./SETUP.md) — from-zero bring-up (Docker Postgres → migrate → seed → run → connect your own AI over MCP), every command verified against this repo's real config. Once it's running, the product tutorial (Chinese-first: cold-start pitfalls, the recommended lesson path, the agent's onboarding letter) is [docs/TUTORIAL.md](./docs/TUTORIAL.md).
 
@@ -223,3 +223,9 @@ Contribution guidelines TBD. Until then, issues discussing MCP protocol design, 
 ---
 
 🖤
+
+## License
+
+AGPL-3.0. Earlier snapshots (before 2026-08-16) were published under MIT and remain MIT for anyone who obtained them then — that grant is irrevocable and we honor it.
+
+Why the change: Learn Shell is self-hosted server software. Plain MIT (or even GPL) leaves the SaaS loophole open — someone could run a modified closed version as a paid service without sharing changes. AGPL closes that loophole: if you run a modified Learn Shell for others over a network, you share your changes. Self-hosting for yourself, forking, and learning from the code are unaffected. If AGPL genuinely blocks a use case you care about, open an issue — we hold the copyright and can talk.
