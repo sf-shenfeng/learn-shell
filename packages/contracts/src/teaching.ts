@@ -159,6 +159,31 @@ export interface LiveSessionFullView {
   session: LiveSession;
   moves: TeachingMove[];
   responses: TeachingResponse[];
+  /**
+   * 增量读取游标 (Live 场次版, 2026-09-02) — 与 AdHocThreadFullView 的
+   * `after_message_id` 同族、同一套 isNewerEventId 全序 (lib/live-wait.ts
+   * sliceLiveSessionIncrement)。调用方传 `after_event_id` 时 (MCP
+   * `live_session_get` / REST `GET /teaching/sessions/:id?after_event_id=`),
+   * moves/responses 只含严格新于该 id 的条目；不传即全量, 这些字段仍照发
+   * (全量读下 has_earlier=false、cursor_recognized=true), 所以调用方拿第一
+   * 刀全量的 next_after_event_id 就能直接进增量循环。
+   *
+   * moves 与 responses **共用一个游标**: 两类 id 都是 genId 铸的
+   * `${prefix}_${base36 ms}_${rand6}`, 已经在同一条全序上, 不需要两套时钟。
+   *
+   * `next_after_event_id` = 该场次目前最新一条 move/response 的 id (不是本
+   * 次返回里最新的那条) —— 本次返回为空时它原地不动, 下一刀照传即可。
+   * 全场没有任何 move/response 且未传游标时为 null。
+   */
+  returned_moves?: number;
+  returned_responses?: number;
+  total_moves?: number;
+  total_responses?: number;
+  has_earlier?: boolean;
+  /** false = 传来的游标不属于本场次；服务端退化成全量返回并挂 warning,
+   *  不报错也不静默丢内容。 */
+  cursor_recognized?: boolean;
+  next_after_event_id?: string | null;
 }
 
 /**

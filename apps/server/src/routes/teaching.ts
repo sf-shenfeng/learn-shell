@@ -6,7 +6,8 @@
 //
 // Endpoints (all mounted under /api/teaching/*):
 //   POST   /sessions                      learner: create LiveSession
-//   GET    /sessions/:id                  full view (session + moves + responses)
+//   GET    /sessions/:id                  full view (session + moves + responses;
+//                                          ?after_event_id= for incremental read)
 //   POST   /sessions/:id/cancel           learner / system: terminate
 //   POST   /sessions/:id/complete         agent: write REFLECT triple + close
 //   POST   /sessions/:id/responses        learner: submit response (idempotent)
@@ -35,6 +36,7 @@ import {
   resolveWaitSince,
   isAdhocMessageOutstanding,
   classifyPendingReason,
+  sliceLiveSessionIncrement,
 } from '../lib/live-wait';
 import {
   buildLiveRuntimeContract,
@@ -155,8 +157,14 @@ t.post('/sessions', async (c) => {
 });
 
 // GET /api/teaching/sessions/:id — full view
+// ?after_event_id=<id> — 增量读 (值更契约·低损耗 · Live 场次版, 2026-09-02):
+// 只返回新于该 id 的 move/response, 走 MCP 工具 live_session_get 同一个
+// sliceLiveSessionIncrement (lib/live-wait.ts 的 isNewerEventId 全序)。缺省
+// =全量 (冷启动/断线恢复), 且与本参数存在之前逐字节相同——web 端不传, 行为
+// 不变。REST/MCP 两兄弟的游标语义按 adhoc 的先例保持同步, 别让它们漂开。
 t.get('/sessions/:id', async (c) => {
   const id = c.req.param('id');
+  const afterEventId = c.req.query('after_event_id');
   const [sess] = await db.select().from(live_sessions).where(eq(live_sessions.id, id)).limit(1);
   if (!sess) return c.json({ error: 'not_found' }, 404);
   const moves = await db
@@ -169,10 +177,18 @@ t.get('/sessions/:id', async (c) => {
     .from(teaching_responses)
     .where(eq(teaching_responses.session_id, id))
     .orderBy(asc(teaching_responses.created_at));
+  const slice = sliceLiveSessionIncrement(moves, responses, afterEventId);
   return c.json({
     session: sess as unknown as LiveSession,
-    moves: moves as unknown as TeachingMove[],
-    responses: responses as unknown as TeachingResponse[],
+    moves: slice.moves as unknown as TeachingMove[],
+    responses: slice.responses as unknown as TeachingResponse[],
+    returned_moves: slice.returned_moves,
+    returned_responses: slice.returned_responses,
+    total_moves: slice.total_moves,
+    total_responses: slice.total_responses,
+    has_earlier: slice.has_earlier,
+    cursor_recognized: slice.cursor_recognized,
+    next_after_event_id: slice.next_after_event_id,
   });
 });
 

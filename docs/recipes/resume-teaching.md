@@ -1,4 +1,4 @@
-<!-- recipe_version: 16c5106480f5 · generated_at: 2026-07-28 · canonical: recipe://resume-teaching -->
+<!-- recipe_version: 4fc4db1c452b · generated_at: 2026-09-02 · canonical: recipe://resume-teaching -->
 # Recipe · 下一课读取记忆续教
 
 > 状态：官方 recipe · Agent Surface Hardening 第一批
@@ -188,6 +188,14 @@ Agent B 备课时（走 [first-contract-and-lesson](./first-contract-and-lesson.
 
 - 它**不能**被 complete、被 cancel、被"恢复"。任何这类调用都会 `CONFLICT` 拒绝，`retryable: false`，原样重试永远不会成功。
 - 正确的接续方式是**读回之后开新场**：`live_session_get` / `live_snapshot_get_latest` 把断点和上下文读出来，然后 `live_session_start` 开一场新的接着上。那场过期的课就留在账上作为历史事实，不去改写它的 `ended_at`。
+
+> **`live_session_get` 的全量与增量（2026-09-02 新增游标）。** 本节这两种场景——**冷启动接棒**、**断线/compact 后恢复**——正是全量读合法的地方：不传 `after_event_id`，一刀读回整场，缺省行为与从前逐字节相同。
+>
+> 但**课上到一半的循环读取不许再这么读**：每一刀都带上一次响应里的 `data.next_after_event_id` 作为 `after_event_id`，只取增量。一场课六刀全量回读＝六份历史重复拷贝，烧的是学习者的钱，也烧你自己的上下文窗口（2026-09-01 首次全长课堂实测：读取类占该 session 上下文 37%）。
+>
+> 用法：第一刀全量读回时响应里已经带好 `data.next_after_event_id`，**下一刀直接传它，不用自己拼**。响应里还有 `returned_moves` / `returned_responses` / `total_moves` / `total_responses` / `has_earlier` 让你知道自己省掉了多少。`data.session` 那一行**永远整行随行**——增量省的是历史正文，不是当前状态，`status` 与 `awaiting_role` 不会因为增量而丢。
+>
+> 三条边界：moves 与 responses **共用这一个游标**（两类 id 走 `live_wait`/`adhoc_thread_get` 同一套全序，家里只有一套时钟）；游标已经是最新一条时返回空集且 `next_after_event_id` 原地不动（可以直接再挂一刀）；游标若不属于本场次（笔误/串场），服务端**不报错也不静默丢内容**，退化成全量返回并在 `warning` 里说明。同族先例见 `adhoc_thread_get` 的 `after_message_id`。
 
 > **这道锁的实际强度,说准一点。** 它是**读后写**的 guard,不是原子条件更新:REST 与 MCP 两条路都先 `select` 出当前状态、交给同一个状态机判定,判定放行后再 `update ... where id = ?`——那条 `update` 没有把"状态仍是 active"写进 WHERE。所以在**并发**下(两个调用者同时对同一场 active session 收官/取消)存在读-写竞态窗口:两边都读到 `active`、都判定放行、后写的一笔覆盖先写的一笔,`ended_at` 与终态被改写而**不会**报 `CONFLICT`。
 >

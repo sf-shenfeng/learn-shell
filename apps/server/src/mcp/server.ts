@@ -101,6 +101,7 @@ import {
   isNewerEventId,
   isAdhocMessageOutstanding,
   classifyPendingReason,
+  sliceLiveSessionIncrement,
 } from '../lib/live-wait';
 import {
   REFLECTION_ANCHOR_RECENCY_WINDOW_MS,
@@ -2414,12 +2415,24 @@ const TOOL_DEFINITIONS = [
     {
       name: 'live_session_get',
       description:
-        '读 LiveSession 全貌 (session + 全部 moves + 全部 responses). 决定下一步前必读.',
+        '读 LiveSession (session + moves + responses). 决定下一步前必读. ' +
+        '课上到一半的循环读取请带上一次响应里的 next_after_event_id 只取增量 (after_event_id) —— ' +
+        '一场课六刀全量回读, 烧的是学习者的钱, 也烧你自己的上下文窗口（值更契约·低损耗）。' +
+        '全量仍合法且是缺省: 冷启动/断线恢复/compact 后接棒时不传 after_event_id 即读全场. ' +
+        '每次响应都带 next_after_event_id (下一刀直接传它) 与 returned_moves/returned_responses/' +
+        'total_moves/total_responses/has_earlier; session 行永远整行随行, 状态与 awaiting_role 不会因增量而丢.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
           session_id: { type: 'string' },
+          after_event_id: {
+            type: 'string',
+            description:
+              '可选。只返回这条 move/response id 之后的新条目 (增量读; moves 与 responses 共用这一个游标, ' +
+              '走 live_wait/adhoc_thread_get 同一套 isNewerEventId 全序). 传上一次响应的 next_after_event_id 即可。' +
+              '缺省=全量回读整场——冷启动/断线恢复时用. 游标已是最新 ⇒ 空集且 next_after_event_id 不变.',
+          },
         },
         required: ['session_id'],
       },
@@ -7252,15 +7265,41 @@ async function handleToolCall(
         .from(teaching_responses)
         .where(eq(teaching_responses.session_id, sid))
         .orderBy(asc(teaching_responses.created_at));
+      // 增量游标 (值更契约·低损耗 · Live 场次版, 2026-09-02) — after_event_id
+      // 缺省=全量回读 (行为与本段存在之前逐字不变); 传了=只返回更新的
+      // move/response, 用 lib/live-wait.ts 的 isNewerEventId 全序 (与
+      // live_wait / adhoc_thread_get 同一套时钟, 不另起炉灶)。session 行
+      // 永远整行随行——增量省的是历史正文, 不是当前状态。
+      const afterEventId = args.after_event_id as string | undefined;
+      const slice = sliceLiveSessionIncrement(moves, responses, afterEventId);
       return success({
         operation: 'live_session_get',
         resource_id: sid,
-        human_note: `Session ${sid}: ${moves.length} move(s), ${responses.length} response(s).`,
+        warning:
+          afterEventId && !slice.cursor_recognized
+            ? `after_event_id ${afterEventId} is not a move/response of session ${sid} — returned the full session instead of an increment (nothing was dropped). Pass a next_after_event_id from a previous live_session_get on THIS session.`
+            : undefined,
+        human_note: afterEventId
+          ? `Session ${sid}: ${slice.returned_moves} new move(s), ${slice.returned_responses} new response(s) after ${afterEventId}` +
+            `${slice.has_earlier ? ` (${slice.total_moves} move(s)/${slice.total_responses} response(s) total — earlier history omitted, this was an incremental read)` : ''}` +
+            `${slice.cursor_recognized ? '' : ' — cursor not recognized, full session returned'}.`
+          : `Session ${sid}: ${slice.returned_moves} move(s), ${slice.returned_responses} response(s).`,
         // 值更契约全路径暴露 (件一) — session 级 may_end_turn: 终态会话
         // (completed/cancelled/expired) 才 true。
         live_runtime_contract: buildLiveRuntimeContract(isTerminalLiveSessionStatus(sess.status)),
         contract_version: liveRuntimeContractVersion(),
-        data: { session: sess, moves, responses },
+        data: {
+          session: sess,
+          moves: slice.moves,
+          responses: slice.responses,
+          returned_moves: slice.returned_moves,
+          returned_responses: slice.returned_responses,
+          total_moves: slice.total_moves,
+          total_responses: slice.total_responses,
+          has_earlier: slice.has_earlier,
+          cursor_recognized: slice.cursor_recognized,
+          next_after_event_id: slice.next_after_event_id,
+        },
       });
     }
     case 'live_message_send': {

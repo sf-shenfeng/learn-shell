@@ -124,6 +124,79 @@ export function isAdhocMessageOutstanding(
   return isNewerEventId(lastMessageId, ackedMessageId);
 }
 
+/** 增量游标 · Live 场次 (2026-09-02) — `live_session_get` / GET
+ *  /teaching/sessions/:id 的 `after_event_id` 切片。
+ *
+ *  为什么是**一个**游标而不是 after_move_id + after_response_id 两个:
+ *  moves (`tm_…`) 与 responses (`tr_…`) 的 id 都是 genId() 铸的
+ *  `${prefix}_${base36 ms}_${rand6}`, 本文件顶部的 isNewerEventId 已经在这
+ *  三个以上的 id 空间之间建立了**唯一一条全序**(先比内嵌毫秒、同毫秒再比
+ *  全串)。同一场课里 move 与 response 是严格交替的一条时间线, 拿这条现成
+ *  的全序切一刀就够, 再发明第二套时钟只会让 live_wait / live_pending /
+ *  adhoc_thread_get / 本工具四处口径打架 —— 家规是一套时钟。
+ *
+ *  语义与 adhoc_thread_get 的 after_message_id 逐字对齐:
+ *    - 不传 ⇒ 全量 (缺省行为与本函数存在之前逐字节相同)
+ *    - 传了 ⇒ 只返回严格新于该 id 的 move/response
+ *    - 传的是最新一条 ⇒ 空集, 且 next_after_event_id 原地不动
+ *
+ *  `next_after_event_id` 取**全量**里最新的一条 (不是本次返回里最新的一
+ *  条): 本次返回为空时它必须停在原处, 而不是塌回 null 把调用方打回全量。
+ *  行是泛型 `{ id: string }` —— drizzle 行与 contracts 类型都能直接喂。 */
+export interface LiveSessionIncrement<M, R> {
+  moves: M[];
+  responses: R[];
+  returned_moves: number;
+  returned_responses: number;
+  /** 该场次库里的总条数 (无论本次返回多少) — 让调用方知道自己省掉了多少。 */
+  total_moves: number;
+  total_responses: number;
+  /** true = 游标之前还有历史, 本次刻意没给 (全量读永远 false)。 */
+  has_earlier: boolean;
+  /** false = 传来的游标不是本场次任何一条 move/response 的 id (笔误/串场/
+   *  伪造)。此时**不报错、不静默丢内容**, 退化成全量返回并由调用方上层挂一
+   *  条 warning —— 课上到一半, 宁可多给 token 也不能少给上下文。 */
+  cursor_recognized: boolean;
+  /** 下次调用该传的游标值 (调用方不必自己拼)。全场空且未传游标时为 null。 */
+  next_after_event_id: string | null;
+}
+
+export function sliceLiveSessionIncrement<M extends { id: string }, R extends { id: string }>(
+  allMoves: M[],
+  allResponses: R[],
+  afterEventId?: string
+): LiveSessionIncrement<M, R> {
+  const cursor = afterEventId && afterEventId.length > 0 ? afterEventId : undefined;
+  const cursorRecognized = cursor
+    ? allMoves.some((m) => m.id === cursor) || allResponses.some((r) => r.id === cursor)
+    : true;
+  // 未识别的游标退化成全量 (见 cursor_recognized 注释)。
+  const applied = cursor && cursorRecognized ? cursor : undefined;
+  const moves = applied ? allMoves.filter((m) => isNewerEventId(m.id, applied)) : allMoves;
+  const responses = applied
+    ? allResponses.filter((r) => isNewerEventId(r.id, applied))
+    : allResponses;
+
+  let newest: string | null = null;
+  for (const row of [...allMoves, ...allResponses]) {
+    if (newest === null || isNewerEventId(row.id, newest)) newest = row.id;
+  }
+
+  return {
+    moves,
+    responses,
+    returned_moves: moves.length,
+    returned_responses: responses.length,
+    total_moves: allMoves.length,
+    total_responses: allResponses.length,
+    has_earlier: applied
+      ? moves.length < allMoves.length || responses.length < allResponses.length
+      : false,
+    cursor_recognized: cursorRecognized,
+    next_after_event_id: newest ?? cursor ?? null,
+  };
+}
+
 export interface BridgeWaitEvent {
   channel: 'live_teaching' | 'adhoc';
   reason: 'live_session_start' | 'live_response' | 'adhoc_message' | 'live_close_declared';
