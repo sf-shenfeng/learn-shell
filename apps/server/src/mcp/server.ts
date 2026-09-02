@@ -134,6 +134,11 @@ import { getCurrentContract, listCurrentContracts } from '../lib/currentContract
 import { validateSourceMaterialArg, formatSourceMaterialLine } from '../lib/source-material';
 import { buildTeacherInbox } from '../lib/teacher-inbox';
 import { buildFlashcardContentPatch, updateFlashcardContent } from '../lib/flashcard-update';
+import {
+  defaultActivatedForConcept,
+  isFlashcardInReviewQueue,
+  tryActivateFlashcardsForLesson,
+} from '../lib/flashcard-activation';
 import { getLessonReadback, getExerciseReadback, getSubmissionReadback } from '../lib/read-back';
 // State 2.0 结业 (complete_contract) — 四轴单点读取, 见 lib/lesson-state.ts
 // 顶部长注: content(published_at)/revision/revision_seen/learning(lesson_
@@ -804,7 +809,13 @@ server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     case 'pair://flashcards/due': {
       const all = await db.select().from(flashcards).where(eq(flashcards.pair_id, pairId));
       const now = Date.now();
-      data = all.filter((f) => new Date(f.fsrs_state.due_at).getTime() <= now);
+      // 与 REST /pairs/:pairId/reviews/due 共用同一条判据 (lib/flashcard-
+      // activation.ts 的 isFlashcardInReviewQueue) —— 这处此前只过滤了
+      // due_at, 连 paused 都漏了: 学习者在 Cards 页按下的"暂停"对老师这一侧
+      // 的 due 视图完全不生效, 挂起的卡照样被推荐来复习。激活门 (迁移 0045)
+      // 这次一并补上, 顺手把 paused 也接回来 —— 两处 due 从此只有一份实现,
+      // 不会再各自跑偏。
+      data = all.filter((f) => isFlashcardInReviewQueue(f, now));
       break;
     }
     case 'pair://exercises/pending': {
@@ -5065,6 +5076,9 @@ async function handleToolCall(
             tags: cardTags ?? [],
             source_refs: [],
             fsrs_state: newCardState(now),
+            // 激活门 (迁移 0045): 挂了 concept 的课程卡出生休眠, 等那节课被
+            // 学完; 挂不上课的卡出生即激活。四条创建路径共用同一个判据。
+            activated: defaultActivatedForConcept(conceptId),
             created_at: now,
             updated_at: now,
           });
@@ -5082,7 +5096,14 @@ async function handleToolCall(
           operation: 'add_flashcard',
           resource_id: id,
           created_refs: { flashcard_id: id },
-          human_note: `Created flashcard ${id}${concept ? ` · appended to concept ${conceptId}.flashcard_ids` : ''}`,
+          // 休眠是静默的话就成了新的坑: 老师建完卡去 pair://flashcards/due
+          // 一看没有这张, 会以为写失败了。明说它在等哪件事。
+          human_note:
+            `Created flashcard ${id}${concept ? ` · appended to concept ${conceptId}.flashcard_ids` : ''}` +
+            (defaultActivatedForConcept(conceptId)
+              ? ''
+              : ' · dormant until its lesson is completed (it has a concept, so it joins the review queue' +
+                ' once the learner declares that lesson done / the live session for it is completed / a submission lands on it)'),
         });
       });
     }
@@ -7567,6 +7588,16 @@ async function handleToolCall(
         // 随行回执 — 场评已写且本场挂着一节课时, 顺手带上闭环进度 (与
         // record_live_evaluation 的回执纪律一致)。
         const completeLessonId = row.context_type === 'lesson' ? row.context_id : undefined;
+
+        // 激活门触发点② (迁移 0045) — 这一场挂着一节课, 收课即"学过这一课"
+        // 的信号之一, 把那节课下休眠的闪卡唤醒。try/catch 在
+        // tryActivateFlashcardsForLesson 内部: 唤醒失败只留 warn, 绝不能让
+        // 老师的收课失败 (session 已经写成 completed 了, 这时抛错等于把一场
+        // 已经落库的收课报成失败)。幂等 —— 重放/多触发点重复调用都只命中
+        // 还在休眠的那些卡。
+        if (completeLessonId) {
+          await tryActivateFlashcardsForLesson(db, pairId, completeLessonId, 'live_session_complete');
+        }
 
         // 件二 (get_lesson_closure_state) 落地后改口: 先指 record_live_
         // evaluation (这场课本身的现场评估, 最贴近的下一步), 再指

@@ -148,6 +148,11 @@ export interface Flashcard {
   /** Stage 7e-cards (2026-07-01): user can pause a card. Paused cards are
    * skipped by the review queue but stay in the deck for management. */
   paused?: boolean;
+  /** 闪卡激活门 (2026-09-02, 迁移 0045): 课时闸。挂了 concept 的课程卡出生
+   * 休眠 (false), 学完那一课才被唤醒; concept_id 为空的卡 (导入/手写) 出生
+   * 即激活。未激活的卡不进复习队列, 但在 Cards 页等管理视图里照常全量可见。
+   * 可选 —— 缺字段按 DDL 默认 (true) 解读, 与 `paused` 同姿态。 */
+  activated?: boolean;
   created_at: string;
   updated_at: string;
 }

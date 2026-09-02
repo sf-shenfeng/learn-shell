@@ -292,6 +292,11 @@ export const lessons: Lesson[] = [
 const fsrsDue = (offsetHours: number) =>
   new Date(new Date(T_BASE).getTime() + offsetHours * 3_600_000).toISOString();
 
+// activated: true (激活门, 迁移 0045) —— 这三张卡都挂在这节已经上过的课
+// (Live 场 + 复习史 review_count >= 1 都在 fixture 里), 所以是醒着的。
+// 显式写出来而不是靠"缺字段按默认解读": fixture 是示例模式下的唯一真相,
+// 它得让人一眼看出这几张卡为什么会出现在复习队列里。
+
 export const flashcards: Flashcard[] = [
   {
     id: CARD_DIRECT_VS_INDIRECT,
@@ -311,6 +316,7 @@ export const flashcards: Flashcard[] = [
       review_count: 3,
       retrievability: 0.62,
     },
+    activated: true,
     created_at: '2026-06-25T09:30:00.000Z',
     updated_at: T_PLUS(0),
   },
@@ -331,6 +337,7 @@ export const flashcards: Flashcard[] = [
       review_count: 2,
       retrievability: 0.41,
     },
+    activated: true,
     created_at: '2026-06-25T09:30:00.000Z',
     updated_at: T_PLUS(0),
   },
@@ -352,6 +359,7 @@ export const flashcards: Flashcard[] = [
       review_count: 1,
       retrievability: 0.55,
     },
+    activated: true,
     created_at: '2026-06-25T09:30:00.000Z',
     updated_at: T_PLUS(0),
   },

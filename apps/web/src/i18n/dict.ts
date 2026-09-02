@@ -200,6 +200,10 @@ export const dict = {
     'cards.nodeReviewTitle': '复习这里到期的卡片',
     'cards.selectAllPrefix': '全选 ',
     'cards.selectAllSuffix': ' 张',
+    // 激活门 (迁移 0045) — Cards 页范围头上的说明性计数, 不是筛选器。
+    'cards.dormantPrefix': '· 未激活 ',
+    'cards.dormantSuffix': ' 张',
+    'cards.dormantTitle': '这些卡挂在还没学完的课上, 暂不进入复习队列; 学完那节课就会自动激活。',
     'cards.bulkPause': '暂停',
     'cards.bulkResume': '恢复',
     'cards.deckChipTitle': '复习这个卡组 →',
@@ -1411,6 +1415,12 @@ export const dict = {
     'cards.nodeReviewTitle': 'Review the due cards here',
     'cards.selectAllPrefix': 'Select all ',
     'cards.selectAllSuffix': '',
+    // Activation gate (migration 0045) — an explanatory count on the scope
+    // header, not a filter.
+    'cards.dormantPrefix': '· ',
+    'cards.dormantSuffix': ' not activated',
+    'cards.dormantTitle':
+      "These cards belong to lessons you haven't finished yet, so they stay out of the review queue; finishing the lesson activates them.",
     'cards.bulkPause': 'Pause',
     'cards.bulkResume': 'Resume',
     'cards.deckChipTitle': 'Review this deck →',

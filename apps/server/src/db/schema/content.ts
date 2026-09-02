@@ -145,6 +145,20 @@ export const flashcards = pgTable('flashcards', {
   // from the DB (contracts.Flashcard.paused already existed) — added here
   // as part of the Cards page Suspend wiring (batch 9 / worker E).
   paused: boolean('paused').notNull().default(false),
+  // 闪卡激活门 (迁移 0045, 2026-09-02) — 复习队列"全量涌入"的病根修复。
+  // newCardState() 让每张新卡 due=now, 而 due 查询只看 pair_id + !paused +
+  // due_at<=now, 零课时维度 —— 一门课刚建完卡, 整门课(含没上过的课)的卡就
+  // 全部堵在复习队列门口。activated 是那道缺失的课时闸: 挂了 concept 的
+  // 课程卡出生即休眠 (false), 学完那一课才被 lib/flashcard-activation.ts
+  // 唤醒; 挂不上课的卡 (concept_id 为空的导入卡/手写卡) 出生即激活, 否则
+  // 它们永远等不到那道门。
+  //
+  // DDL 默认 true 是刻意的: 老库加这一列不许把已有的卡一夜清零 (SWSF Hub
+  // 同病修复时的教训)。"课程卡默认休眠"这条规则住应用层
+  // (lib/flashcard-activation.ts 的 defaultActivatedForConcept), 不住 DDL,
+  // 也不在迁移里回填 —— 存量卡的归属由 scripts/backfill-flashcard-
+  // activation.ts 显式跑, 有 dry-run 有人核数, 不靠迁移偷偷改。
+  activated: boolean('activated').notNull().default(true),
   created_at: timestamp('created_at', { withTimezone: true })
     .notNull()
     .default(sql`now()`),

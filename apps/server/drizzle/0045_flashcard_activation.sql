@@ -1,0 +1,30 @@
+-- 迁移 0045: 闪卡激活门 (2026-09-02)。
+--
+-- 病: 复习队列"全量涌入"。lib/fsrs.ts 的 newCardState() 让每张新卡
+-- due_at = now, 而三处 due 查询只过滤 pair_id + !paused + due_at <= now,
+-- 零课时维度 —— 一门二十课的课程一次备完卡, 第一天就有几百张"还没上过
+-- 的课"的卡全部堵在复习队列门口。flashcards 表上没有 course_id/lesson_id,
+-- 课时归属只能走 concept_id → concepts.lesson_id, 而这一层此前从没被
+-- due 查询用上过。
+--
+-- 药: activated 这道课时闸。挂了 concept 的课程卡出生休眠 (false), 学完
+-- 那一课才被 lib/flashcard-activation.ts 的 activateFlashcardsForLesson
+-- 唤醒 (三个触发点: declare-completed 主锚 / live_session_complete 挂课
+-- 的场 / 作业提交); concept_id 为空的卡 (导入卡、手写卡) 出生即激活 ——
+-- 它们挂不上课, 也就永远等不到那道门, 默认休眠等于把它们永久埋掉。
+--
+-- 为什么 DDL 默认 true, 而不是跟应用层的"课程卡默认休眠"一致:
+--   加列这一刻库里已经有几百张卡, 默认 false 会把它们一夜之间全部踢出
+--   复习队列 —— 用户第二天打开看到的是一个空队列, 而不是一个干净的队列。
+--   SWSF Hub 修同一个病时踩的正是这个坑。默认 true = 加列不改变任何
+--   既有行为, 新规矩只对这一刻之后创建的卡生效。
+--
+-- 为什么不在这支 SQL 里回填:
+--   "哪些存量卡该休眠"要跨 concepts / lesson_progress / exercise_submissions
+--   / live_sessions 四张表判断, 是业务判断不是结构变更。这种判断必须先
+--   dry-run 让人核数再落笔 —— 见 scripts/backfill-flashcard-activation.ts
+--   (默认 dry-run, --apply 才写, 事务, 幂等)。迁移只开列, 不替人做决定
+--   (同 0035/0040/0044 的"不回填"惯例)。
+--
+-- additive + idempotent: IF NOT EXISTS 使重复执行安全; 无回填、无索引变更。
+ALTER TABLE "flashcards" ADD COLUMN IF NOT EXISTS "activated" boolean DEFAULT true NOT NULL;

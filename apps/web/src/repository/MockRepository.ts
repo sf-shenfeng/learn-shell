@@ -650,8 +650,17 @@ const MockRepository: Repository &
   async getDueReviews(pair_id, limit) {
     if (pair_id !== f.pair.id) return [];
     const now = Date.now();
+    // 三道闸, 与服务端 lib/flashcard-activation.ts 的 isFlashcardInReviewQueue
+    // 逐条对齐 (Mock 与 Http 必须对齐是成文纪律; 跨 package 引不到那个函数,
+    // 所以在这里镜像同一条判据):
+    //   activated === false 不进 —— 课时门 (迁移 0045): 还没学过的那节课的
+    //     卡不该堵在复习队列门口。用 !== false 而不是取真值, 因为契约层
+    //     Flashcard.activated 是可选的, 缺字段按 DDL 默认 (true) 解读。
+    //   paused 不进 —— 用户手动挂起。
+    //   未到期不进。
     const due = state.flashcards
       .filter((c) => c.pair_id === pair_id)
+      .filter((c) => c.activated !== false)
       .filter((c) => !c.paused)
       .filter((c) => new Date(c.fsrs_state.due_at).getTime() <= now)
       .sort(
@@ -1251,6 +1260,9 @@ const MockRepository: Repository &
         retrievability: 1,
       },
       paused: false,
+      // 激活门 (迁移 0045) 与 REST POST /flashcards 同判据: 挂了 concept 的
+      // 课程卡出生休眠, 挂不上课的卡出生即激活。
+      activated: input.concept_id == null || String(input.concept_id).trim() === '',
       created_at: now,
       updated_at: now,
     };
@@ -1389,6 +1401,9 @@ const MockRepository: Repository &
             retrievability: 1,
           },
           paused: false,
+          // 导入路径 concept_id 恒为 null ⇒ 恒激活 (与服务端批量导入同口径:
+          // 挂不上课的卡若默认休眠就永远醒不过来)。
+          activated: true,
           created_at: now,
           updated_at: now,
         });

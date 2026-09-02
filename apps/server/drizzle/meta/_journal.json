@@ -316,6 +316,13 @@
       "when": 1785680857528,
       "tag": "0044_evidence_channels",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1788363488995,
+      "tag": "0045_flashcard_activation",
+      "breakpoints": true
     }
   ]
 }

@@ -421,12 +421,18 @@ export default function Cards() {
     let due = 0;
     let paused = 0;
     let rest = 0;
+    // 激活门 (迁移 0045): 未激活的卡不进复习队列, 但**照常留在这个管理视图
+    // 里** —— Cards 页是全量视图, 不做二次过滤 (筛选 chip / 树计数 / 列表
+    // 一律不变)。只在这里数一个"未激活 N 张", 让"我建了 60 张卡, 到期只有
+    // 6 张"这件事有个解释, 而不是一个说不清的窟窿。
+    let dormant = 0;
     for (const c of scopedCards) {
+      if (c.activated === false) dormant++;
       if (c.paused) paused++;
       else if (isDue(c, nowMs)) due++;
       else rest++;
     }
-    return { all: scopedCards.length, due, paused, rest };
+    return { all: scopedCards.length, due, paused, rest, dormant };
   }, [scopedCards, nowMs]);
 
   const visibleCards = useMemo(() => {
@@ -913,6 +919,17 @@ export default function Cards() {
         >
           {visibleCards.length}{t('cards.cardsCountSuffix')}
         </span>
+        {/* 未激活 N 张 (激活门, 迁移 0045) — 纯说明, 不是筛选器: 点不动、
+            不改列表。当前范围里有多少张卡还在等它们那节课被学完。 */}
+        {scopeCounts.dormant > 0 && (
+          <span
+            className="text-[var(--ls-text-tertiary)] tabular-nums"
+            title={t('cards.dormantTitle')}
+            style={{ fontSize: '12px', lineHeight: '16px' }}
+          >
+            {t('cards.dormantPrefix')}{scopeCounts.dormant}{t('cards.dormantSuffix')}
+          </span>
+        )}
         {selectMode && visibleCards.length > 0 && (
           <button
             type="button"

@@ -53,6 +53,7 @@ import { getConfidenceAnchors } from '../lib/confidence-anchors';
 import { getCurrentContract } from '../lib/currentContract';
 import { buildTeacherInbox } from '../lib/teacher-inbox';
 import { getLessonAxesForLessons } from '../lib/lesson-state';
+import { isFlashcardInReviewQueue } from '../lib/flashcard-activation';
 
 const r = new Hono();
 
@@ -280,13 +281,15 @@ r.get('/pairs/:pairId/reviews/due', async (c) => {
   const limit = limitParam ? Number(limitParam) : undefined;
   const all = await db.select().from(flashcards).where(eq(flashcards.pair_id, pairId));
   // FSRS due_at is inside the jsonb; filter in JS for now (W3 will optimize via generated column / index)
-  // Paused cards never enter the review queue (batch 9 验收补刀 — Mock's
-  // getDueReviews already filtered these; live path must agree or Suspend
-  // is decorative).
+  // 三道闸合并成一条判据 (lib/flashcard-activation.ts 的
+  // isFlashcardInReviewQueue, 与 MCP resource pair://flashcards/due 共用同
+  // 一份): 未激活不进 (课时门, 迁移 0045 —— 没上过的课的卡不该堵在队列门
+  // 口); 已暂停不进 (batch 9 验收补刀 — Mock's getDueReviews already
+  // filtered these; live path must agree or Suspend is decorative); 未到期
+  // 不进。
   const now = new Date().getTime();
   const due = all
-    .filter((f) => !f.paused)
-    .filter((f) => new Date(f.fsrs_state.due_at).getTime() <= now)
+    .filter((f) => isFlashcardInReviewQueue(f, now))
     .sort(
       (a, b) =>
         new Date(a.fsrs_state.due_at).getTime() - new Date(b.fsrs_state.due_at).getTime()
