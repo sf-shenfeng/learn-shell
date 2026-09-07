@@ -1,3 +1,4 @@
+import type { FlashcardActivationRepo } from './flashcardActivationExt';
 // HttpRepository — talks to apps/server REST API.
 //
 // Stage B3: read paths wired.
@@ -107,7 +108,7 @@ const patch = <T>(path: string, body: unknown): Promise<T> =>
 
 const del = <T>(path: string): Promise<T> => api<T>(path, { method: 'DELETE' });
 
-const HttpRepository: Repository &
+const HttpRepository: Repository & FlashcardActivationRepo &
   SimulatedQuizRepo &
   JournalRepo &
   FlashcardImportRepo &
@@ -182,6 +183,9 @@ const HttpRepository: Repository &
   },
   async createFlashcard(input) {
     return post<Flashcard>('/flashcards', input);
+  },
+  async setFlashcardActivated(id, activated) {
+    return patch<Flashcard>(`/flashcards/${id}`, { activated });
   },
   async setFlashcardPaused(id, paused) {
     return patch<Flashcard>(`/flashcards/${id}`, { paused });

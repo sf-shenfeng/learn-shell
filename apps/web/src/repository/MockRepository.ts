@@ -1,3 +1,5 @@
+import { dueReviewCards, isDueReviewCard, isIndependentCard } from '../lib/cardEligibility';
+import type { FlashcardActivationRepo } from './flashcardActivationExt';
 // MockRepository — W1+round 2.
 //
 // 接 TEACHING-SPEC-v1 §7 全部 read + mutation 接口. localStorage 持久化,
@@ -360,6 +362,38 @@ function persist<K extends keyof State>(key: K): void {
 // id → ISO 时间戳 的内存表。刻意不进 State/localStorage: 刷新即回落到
 // updated_at 排序, 与服务端"没有 viewed 事件就回落存量排序"是同一条规则。
 const viewedAt = new Map<string, string>();
+
+function mockProjectedFlashcards(pairId: string): Flashcard[] {
+  return state.flashcards.filter((card) => card.pair_id === pairId).map((card) => {
+    if (!card.concept_id) {
+      return { ...card, lesson_id: null, course_id: null, source_status: 'independent' };
+    }
+    const lesson = state.lessons.find((row) => row.concept_ids.includes(card.concept_id!));
+    const course = lesson
+      ? state.courses.find((row) => row.id === lesson.course_id && row.pair_id === pairId)
+      : undefined;
+    if (!lesson || !course) {
+      return { ...card, lesson_id: null, course_id: null, source_status: 'unresolved', activated: false };
+    }
+    const completed = state.lessonProgress.some((row) =>
+      row.pair_id === pairId && row.lesson_id === lesson.id &&
+      (row.state === 'completed_declared' || row.state === 'closed')) ||
+      state.liveSessions.some((row) => row.pair_id === pairId && row.context_type === 'lesson' &&
+        row.context_id === lesson.id && row.status === 'completed');
+    return { ...card, lesson_id: lesson.id, course_id: course.id, source_status: 'course', activated: completed };
+  });
+}
+
+function mockActivatedForConcept(pairId: string, conceptId: Flashcard['concept_id']): boolean {
+  if (!conceptId) return false;
+  const lesson = state.lessons.find((row) => row.concept_ids.includes(conceptId));
+  if (!lesson) return false;
+  return state.lessonProgress.some((row) => row.pair_id === pairId && row.lesson_id === lesson.id &&
+    (row.state === 'completed_declared' || row.state === 'closed')) ||
+    state.liveSessions.some((row) => row.pair_id === pairId && row.context_type === 'lesson' &&
+      row.context_id === lesson.id && row.status === 'completed');
+}
+
 /** 取"最近接触"排序键 = max(实体自己的 updated_at, 最近一次 viewed)。 */
 function touchedAt(id: string, updated_at: string | null | undefined): string {
   const viewed = viewedAt.get(id) ?? '';
@@ -500,7 +534,7 @@ function mockComputeChecklistSnapshot(
   };
 }
 
-const MockRepository: Repository &
+const MockRepository: Repository & FlashcardActivationRepo &
   SimulatedQuizRepo &
   JournalRepo &
   FlashcardImportRepo &
@@ -650,27 +684,11 @@ const MockRepository: Repository &
   async getDueReviews(pair_id, limit) {
     if (pair_id !== f.pair.id) return [];
     const now = Date.now();
-    // 三道闸, 与服务端 lib/flashcard-activation.ts 的 isFlashcardInReviewQueue
-    // 逐条对齐 (Mock 与 Http 必须对齐是成文纪律; 跨 package 引不到那个函数,
-    // 所以在这里镜像同一条判据):
-    //   activated === false 不进 —— 课时门 (迁移 0045): 还没学过的那节课的
-    //     卡不该堵在复习队列门口。用 !== false 而不是取真值, 因为契约层
-    //     Flashcard.activated 是可选的, 缺字段按 DDL 默认 (true) 解读。
-    //   paused 不进 —— 用户手动挂起。
-    //   未到期不进。
-    const due = state.flashcards
-      .filter((c) => c.pair_id === pair_id)
-      .filter((c) => c.activated !== false)
-      .filter((c) => !c.paused)
-      .filter((c) => new Date(c.fsrs_state.due_at).getTime() <= now)
-      .sort(
-        (a, b) =>
-          new Date(a.fsrs_state.due_at).getTime() - new Date(b.fsrs_state.due_at).getTime()
-      );
+    const due = dueReviewCards(mockProjectedFlashcards(pair_id), now);
     return limit ? due.slice(0, limit) : due;
   },
   async getAllFlashcards(pair_id) {
-    return state.flashcards.filter((c) => c.pair_id === pair_id);
+    return mockProjectedFlashcards(pair_id);
   },
 
   // -------- session (read) --------
@@ -693,6 +711,8 @@ const MockRepository: Repository &
     const idx = state.flashcards.findIndex((c) => c.id === input.card_id);
     if (idx < 0) throw new Error(`flashcard ${input.card_id} not found`);
     const card = state.flashcards[idx]!;
+    const projected = mockProjectedFlashcards(card.pair_id).find((row) => row.id === card.id)!;
+    if (!isDueReviewCard(projected, Date.now())) throw new Error('card_not_in_review');
     const prev = card.fsrs_state;
     const now = new Date();
     // Mock-mode approximation of FSRS (real ts-fsrs runs server-side):
@@ -1260,15 +1280,25 @@ const MockRepository: Repository &
         retrievability: 1,
       },
       paused: false,
-      // 激活门 (迁移 0045) 与 REST POST /flashcards 同判据: 挂了 concept 的
-      // 课程卡出生休眠, 挂不上课的卡出生即激活。
-      activated: input.concept_id == null || String(input.concept_id).trim() === '',
+      // Mirrors the server: a card added after lesson completion is ready;
+      // unresolved/independent cards require explicit enrollment.
+      activated: mockActivatedForConcept(input.pair_id, input.concept_id),
       created_at: now,
       updated_at: now,
     };
     state.flashcards.push(card);
     persist('flashcards');
     return card;
+  },
+  async setFlashcardActivated(id, activated) {
+    const idx = state.flashcards.findIndex((c) => c.id === id);
+    if (idx < 0) throw new Error(`flashcard ${id} not found`);
+    const card = state.flashcards[idx]!;
+    const projected = mockProjectedFlashcards(card.pair_id).find((row) => row.id === card.id)!;
+    if (!isIndependentCard(projected)) throw new Error('course_activation_is_automatic');
+    state.flashcards[idx] = { ...card, activated, updated_at: new Date().toISOString() };
+    persist('flashcards');
+    return state.flashcards[idx]!;
   },
   async setFlashcardPaused(id, paused) {
     const idx = state.flashcards.findIndex((c) => c.id === id);
@@ -1401,9 +1431,8 @@ const MockRepository: Repository &
             retrievability: 1,
           },
           paused: false,
-          // 导入路径 concept_id 恒为 null ⇒ 恒激活 (与服务端批量导入同口径:
-          // 挂不上课的卡若默认休眠就永远醒不过来)。
-          activated: true,
+          // Imported cards wait for the learner to add them to review.
+          activated: false,
           created_at: now,
           updated_at: now,
         });

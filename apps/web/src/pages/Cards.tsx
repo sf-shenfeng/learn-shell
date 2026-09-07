@@ -1,3 +1,4 @@
+import type { FlashcardActivationRepo } from '../repository/flashcardActivationExt';
 // Stage 7e-cards · v3 (2026-07-21): management IA for the 562-card era.
 // (v2 was the design-HTML reproduction: stat tiles + chips + deck/tag
 // grouping in one long scroll — fine at 40 cards, unbrowsable at 562.)
@@ -27,6 +28,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Flashcard, Repository } from '@learn-shell/contracts';
+import { cardLessonId, isActiveCard, isDueReviewCard, isIndependentCard } from '../lib/cardEligibility';
 import { UNGROUPED_COURSE_KEY } from '../review/DeckRail';
 import { StateDot, type StateDotShape } from '../components/StateDot';
 import { useRepository } from '../repository';
@@ -46,7 +48,9 @@ type Scope =
   | { kind: 'all' }
   | { kind: 'course'; id: string }
   | { kind: 'lesson'; id: string }
-  | { kind: 'ungrouped' };
+  | { kind: 'ungrouped' }
+  | { kind: 'unresolved' }
+  | { kind: 'independent-deck'; id: string };
 
 // Windowing for 562+ rows — CSS-only, no virtualization library: rows
 // off-screen skip layout/paint entirely; the intrinsic-size hint keeps the
@@ -146,7 +150,7 @@ function dotForCard(c: Flashcard): CardDotSpec {
 }
 
 function formatDue(c: Flashcard, nowMs: number): { label: string; color: string } {
-  if (c.paused) return { label: '—', color: 'var(--ls-text-tertiary)' };
+  if (!isActiveCard(c) || c.paused) return { label: '—', color: 'var(--ls-text-tertiary)' };
   const ms = new Date(c.fsrs_state.due_at).getTime() - nowMs;
   if (ms <= 0) {
     const abs = -ms;
@@ -178,6 +182,8 @@ export default function Cards() {
 
   const allQ = useQuery({
     queryKey: ['flashcards-all', pairId],
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
     queryFn: () =>
       repo && pairId ? repo.getAllFlashcards(pairId) : Promise.resolve([]),
     enabled: !!repo && !!pairId,
@@ -248,7 +254,16 @@ export default function Cards() {
   }, [pendingQ.data]);
 
   const cards = allQ.data ?? [];
-  const nowMs = Date.now();
+  const [nowMs, setNowMs] = useState(Date.now);
+  useEffect(() => {
+    const tick = () => { if (!document.hidden) setNowMs(Date.now()); };
+    const timer = window.setInterval(tick, 30_000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, []);
 
   // ------------------------- Scope tree data (v3) -------------------------
   // Rides the exact query keys Review.tsx / Courses.tsx already use
@@ -303,6 +318,31 @@ export default function Cards() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courses, lessonsQs]);
 
+  // Use the server's concept → lesson join first. Legacy mock cards alone
+  // fall back to the old inverse concept index.
+  const lessonLoc = useMemo(() => {
+    const m = new Map<string, LessonLoc>();
+    courses.forEach((course, courseIdx) => {
+      for (const lesson of lessonsQs[courseIdx]?.data ?? []) {
+        m.set(lesson.id, {
+          lessonId: lesson.id, lessonTitle: lesson.title, lessonOrder: lesson.order,
+          courseId: course.id, courseIdx,
+        });
+      }
+    });
+    return m;
+  }, [courses, lessonsQs]);
+  const cardLoc = useMemo(() => {
+    const m = new Map<string, LessonLoc>();
+    for (const card of cards) {
+      const legacy = card.concept_id ? conceptLoc.get(card.concept_id) : undefined;
+      const lessonId = cardLessonId(card, legacy?.lessonId);
+      const loc = lessonId ? lessonLoc.get(lessonId) : undefined;
+      if (loc) m.set(card.id, loc);
+    }
+    return m;
+  }, [cards, conceptLoc, lessonLoc]);
+
   // Tree nodes: courses (getCourses order) → lessons (lesson.order), only
   // nodes that actually hold cards; Ungrouped bucket last (DeckRail's
   // UNGROUPED_COURSE_KEY convention). Counts are total cards per node; due
@@ -318,15 +358,15 @@ export default function Cards() {
   const tree = useMemo(() => {
     const lessonAgg = new Map<string, { count: number; due: number }>();
     const courseAgg = new Map<string, { count: number; due: number }>();
-    let ungroupedCount = 0;
-    let ungroupedDue = 0;
+    let independentCount = 0;
+    let unresolvedCount = 0;
     for (const c of cards) {
       const loc =
-        c.concept_id != null ? conceptLoc.get(c.concept_id as unknown as string) : undefined;
-      const cardDue = !c.paused && isDue(c, nowMs) ? 1 : 0;
+        cardLoc.get(c.id);
+      const cardDue = isDueReviewCard(c, nowMs) ? 1 : 0;
       if (!loc) {
-        ungroupedCount++;
-        ungroupedDue += cardDue;
+        if (isIndependentCard(c)) independentCount++;
+        else unresolvedCount++;
         continue;
       }
       const la = lessonAgg.get(loc.lessonId) ?? { count: 0, due: 0 };
@@ -367,9 +407,19 @@ export default function Cards() {
         lessons,
       });
     });
-    return { courseNodes, ungroupedCount, ungroupedDue };
+    return { courseNodes, independentCount, unresolvedCount };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cards, conceptLoc, courses, lessonsQs, nowMs]);
+  }, [cards, cardLoc, courses, lessonsQs, nowMs]);
+
+  const independentDecks = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const card of cards) {
+      if (!cardLoc.has(card.id) && isIndependentCard(card)) {
+        counts.set(card.deck_id, (counts.get(card.deck_id) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts, ([id, count]) => ({ id, count })).sort((a, b) => a.id.localeCompare(b.id));
+  }, [cards, cardLoc]);
 
   // Deck select options for Add-card / Move-to-deck (unchanged axis:
   // deck_id, derived from the cards themselves).
@@ -385,13 +435,13 @@ export default function Cards() {
 
   // ------------------------- Stats -------------------------
   const stats = useMemo(() => {
-    let total = 0;
+    const total = cards.length;
     let due = 0;
     let weak = 0;
     let mastered = 0;
     let suspended = 0;
     for (const c of cards) {
-      total++;
+      if (!isActiveCard(c)) continue;
       if (c.paused) {
         suspended++;
         continue;
@@ -408,12 +458,14 @@ export default function Cards() {
     if (scope.kind === 'all') return cards;
     return cards.filter((c) => {
       const loc =
-        c.concept_id != null ? conceptLoc.get(c.concept_id as unknown as string) : undefined;
+        cardLoc.get(c.id);
       if (scope.kind === 'ungrouped') return !loc;
+      if (scope.kind === 'unresolved') return !loc && !isIndependentCard(c);
+      if (scope.kind === 'independent-deck') return !loc && c.deck_id === scope.id;
       if (scope.kind === 'course') return loc?.courseId === scope.id;
       return loc?.lessonId === scope.id;
     });
-  }, [cards, scope, conceptLoc]);
+  }, [cards, scope, cardLoc]);
 
   // Chip counts live inside the current scope (search-agnostic) — the
   // chips describe the scope, the search narrows within it.
@@ -421,25 +473,23 @@ export default function Cards() {
     let due = 0;
     let paused = 0;
     let rest = 0;
-    // 激活门 (迁移 0045): 未激活的卡不进复习队列, 但**照常留在这个管理视图
-    // 里** —— Cards 页是全量视图, 不做二次过滤 (筛选 chip / 树计数 / 列表
-    // 一律不变)。只在这里数一个"未激活 N 张", 让"我建了 60 张卡, 到期只有
-    // 6 张"这件事有个解释, 而不是一个说不清的窟窿。
+    // All remains a management count. Due/Rest describe only activated
+    // cards; dormant cards are retained and counted separately.
     let dormant = 0;
     for (const c of scopedCards) {
-      if (c.activated === false) dormant++;
+      if (!isActiveCard(c)) dormant++;
       if (c.paused) paused++;
-      else if (isDue(c, nowMs)) due++;
-      else rest++;
+      else if (isDueReviewCard(c, nowMs)) due++;
+      else if (isActiveCard(c)) rest++;
     }
     return { all: scopedCards.length, due, paused, rest, dormant };
   }, [scopedCards, nowMs]);
 
   const visibleCards = useMemo(() => {
     let arr = scopedCards;
-    if (filter === 'due') arr = arr.filter((c) => !c.paused && isDue(c, nowMs));
+    if (filter === 'due') arr = arr.filter((c) => isDueReviewCard(c, nowMs));
     else if (filter === 'paused') arr = arr.filter((c) => c.paused);
-    else if (filter === 'rest') arr = arr.filter((c) => !c.paused && !isDue(c, nowMs));
+    else if (filter === 'rest') arr = arr.filter((c) => isActiveCard(c) && !c.paused && !isDue(c, nowMs));
     if (query.trim()) {
       const q = query.toLowerCase();
       arr = arr.filter(
@@ -457,7 +507,7 @@ export default function Cards() {
       // don't resolve to a lesson sink to the end.
       const key = (c: Flashcard) => {
         const loc =
-          c.concept_id != null ? conceptLoc.get(c.concept_id as unknown as string) : undefined;
+          cardLoc.get(c.id);
         return loc
           ? { ci: loc.courseIdx, lo: loc.lessonOrder }
           : { ci: Number.MAX_SAFE_INTEGER, lo: 0 };
@@ -474,7 +524,7 @@ export default function Cards() {
       sorted.sort((a, b) => b.created_at.localeCompare(a.created_at));
     }
     return sorted;
-  }, [scopedCards, filter, query, sortMode, nowMs, conceptLoc]);
+  }, [scopedCards, filter, query, sortMode, nowMs, cardLoc]);
 
   // Scope header: human label + the honest review deep link. 入口主权条款 —
   // never bare all-due from a scoped context: course/lesson scopes carry
@@ -482,7 +532,9 @@ export default function Cards() {
   // bare /review; Ungrouped has no honest param, so it gets no link at all.
   const scopeLabel = (() => {
     if (scope.kind === 'all') return t('cards.tree.allCards');
-    if (scope.kind === 'ungrouped') return t('cards.tree.ungrouped');
+    if (scope.kind === 'ungrouped') return t('cards.tree.independent');
+    if (scope.kind === 'unresolved') return t('cards.tree.unresolved');
+    if (scope.kind === 'independent-deck') return scope.id;
     if (scope.kind === 'course') {
       return tree.courseNodes.find((n) => n.courseId === scope.id)?.topic ?? scope.id;
     }
@@ -497,9 +549,22 @@ export default function Cards() {
       ? `/review?course=${encodeURIComponent(scope.id)}`
       : scope.kind === 'lesson'
         ? `/review?lesson=${encodeURIComponent(scope.id)}`
+        : scope.kind === 'independent-deck'
+          ? `/review?deck=${encodeURIComponent(scope.id)}`
         : scope.kind === 'all'
           ? '/review'
           : null;
+
+  const activationMut = useMutation({
+    mutationFn: ({ id, activated }: { id: Flashcard['id']; activated: boolean }) =>
+      (repo as Repository & FlashcardActivationRepo).setFlashcardActivated(id, activated),
+    onSuccess: () => {
+      for (const key of ['flashcards-all', 'all-flashcards', 'due-full', 'due']) {
+        void qc.invalidateQueries({ queryKey: [key, pairId] });
+      }
+    },
+    onError: () => setToast(t('cards.activationFailed')),
+  });
 
   // ------------------------- Mutations -------------------------
   const createMut = useMutation({
@@ -833,7 +898,9 @@ export default function Cards() {
       <div className="flex" style={{ gap: '24px', alignItems: 'flex-start' }}>
       <ScopeTree
         courseNodes={tree.courseNodes}
-        ungroupedCount={tree.ungroupedCount}
+        independentCount={tree.independentCount}
+        unresolvedCount={tree.unresolvedCount}
+        independentDecks={independentDecks}
         totalCount={cards.length}
         scope={scope}
         onScope={setScope}
@@ -1009,6 +1076,9 @@ export default function Cards() {
                 onPause={() =>
                   pauseMut.mutate({ id: c.id, paused: !c.paused })
                 }
+                onActivation={isIndependentCard(c)
+                  ? () => activationMut.mutate({ id: c.id, activated: !isActiveCard(c) }) : undefined}
+                activationPending={activationMut.isPending}
                 onReset={() => resetMut.mutate(c.id)}
                 onDelete={() => deleteMut.mutate(c.id)}
                 selectMode={selectMode}
@@ -1194,7 +1264,9 @@ function FilterChip({
 
 function ScopeTree({
   courseNodes,
-  ungroupedCount,
+  independentCount,
+  unresolvedCount,
+  independentDecks,
   totalCount,
   scope,
   onScope,
@@ -1206,7 +1278,9 @@ function ScopeTree({
     due: number;
     lessons: Array<{ lessonId: string; title: string; count: number; due: number }>;
   }>;
-  ungroupedCount: number;
+  independentCount: number;
+  unresolvedCount: number;
+  independentDecks: Array<{ id: string; count: number }>;
   totalCount: number;
   scope: Scope;
   onScope: (s: Scope) => void;
@@ -1360,13 +1434,26 @@ function ScopeTree({
             </li>
           );
         })}
-        {ungroupedCount > 0 && (
+        {independentCount > 0 && (
+          <li>
+            <div className="text-[11px] text-[var(--ls-text-tertiary)]" style={{ padding: '12px 6px 6px' }}>
+              {t('cards.tree.independent')}
+            </div>
+            <ul>
+              {independentDecks.map((deck) => (
+                <TreeLeafRow key={deck.id} label={deck.id} count={deck.count}
+                  selected={scope.kind === 'independent-deck' && scope.id === deck.id}
+                  onClick={() => onScope({ kind: 'independent-deck', id: deck.id })} />
+              ))}
+            </ul>
+          </li>
+        )}
+        {unresolvedCount > 0 && (
           <TreeLeafRow
-            key={UNGROUPED_COURSE_KEY}
-            label={t('cards.tree.ungrouped')}
-            count={ungroupedCount}
-            selected={scope.kind === 'ungrouped'}
-            onClick={() => onScope({ kind: 'ungrouped' })}
+            label={t('cards.tree.unresolved')}
+            count={unresolvedCount}
+            selected={scope.kind === 'unresolved'}
+            onClick={() => onScope({ kind: 'unresolved' })}
           />
         )}
       </ul>
@@ -1799,6 +1886,8 @@ function CardRow({
   open,
   onToggle,
   onPause,
+  onActivation,
+  activationPending,
   onReset,
   onDelete,
   selectMode,
@@ -1813,6 +1902,8 @@ function CardRow({
   open: boolean;
   onToggle: () => void;
   onPause: () => void;
+  onActivation?: () => void;
+  activationPending: boolean;
   onReset: () => void;
   onDelete: () => void;
   selectMode: boolean;
@@ -1923,7 +2014,11 @@ function CardRow({
             color: card.paused ? 'var(--ls-text-tertiary)' : due.color,
           }}
         >
-          {card.paused ? t('cards.state.suspended') : due.label}
+          {card.source_status === 'unresolved'
+            ? t('cards.sourceUnresolved')
+            : !isActiveCard(card)
+              ? t('cards.notInReview')
+              : card.paused ? t('cards.state.suspended') : due.label}
         </span>
         <button
           type="button"
@@ -1997,6 +2092,11 @@ function CardRow({
             <span>{t('cards.fsrs.deckLabel')} {card.deck_id}</span>
           </div>
           <div className="flex flex-wrap items-center" style={{ gap: '8px' }}>
+            {onActivation && (
+              <RowButton onClick={onActivation} disabled={activationPending}>
+                {isActiveCard(card) ? t('cards.leaveReview') : t('cards.joinReview')}
+              </RowButton>
+            )}
             <RowButton onClick={onPause}>
               {card.paused ? t('cards.resume') : t('cards.suspend')}
             </RowButton>

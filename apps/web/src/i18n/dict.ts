@@ -11,6 +11,14 @@ export type DictKey = keyof typeof dict.zh;
 
 export const dict = {
   zh: {
+    'cards.tree.independent': '独立卡组',
+    'cards.tree.unresolved': '来源待核',
+    'cards.sourceUnresolved': '来源待核',
+    'cards.notInReview': '未加入复习',
+    'cards.joinReview': '加入复习',
+    'cards.leaveReview': '移出复习',
+    'cards.activationFailed': '复习设置未保存，请重试。',
+
     // --- App chrome ---
     'app.name': 'Learn Shell',
     'app.tagline': 'pre-v0.1 · W1',
@@ -203,7 +211,7 @@ export const dict = {
     // 激活门 (迁移 0045) — Cards 页范围头上的说明性计数, 不是筛选器。
     'cards.dormantPrefix': '· 未激活 ',
     'cards.dormantSuffix': ' 张',
-    'cards.dormantTitle': '这些卡挂在还没学完的课上, 暂不进入复习队列; 学完那节课就会自动激活。',
+    'cards.dormantTitle': '课程卡学完后自动进入复习；独立卡可展开后手动加入。未加入的卡仍保留在这里。',
     'cards.bulkPause': '暂停',
     'cards.bulkResume': '恢复',
     'cards.deckChipTitle': '复习这个卡组 →',
@@ -218,6 +226,10 @@ export const dict = {
     'review.hard': '困难',
     'review.good': '良好',
     'review.easy': '简单',
+    'review.ratingFailed': '评分没有保存，请留在这张卡上重试。',
+    'review.alreadyRated': '这张卡本轮已经保存；回看不会重复评分。',
+    'review.savedReviewImmutable': '评分已经保存。U、J 和方向键只用于回看，不会撤回或重复写入。',
+    'review.refreshFailed': '到期队列刷新失败，请稍后再试。',
     'review.feynman': '先表达，再对照',
     'review.recording': '录音中…',
     'review.startMic': '开始说出你的回答',
@@ -1148,7 +1160,7 @@ export const dict = {
     'review.doneState.conceptsTouchedLabel': '涉及的概念：',
     'review.doneState.againHitPrefix': '你踩到了一次 ',
     'review.doneState.againHitSuffix': '——这张卡很快会用不同方式再考你一次。',
-    'review.doneState.reviewAgainButton': '再来一轮',
+    'review.doneState.reviewAgainButton': '刷新到期卡',
     'review.doneState.backToCourses': '返回课程',
     'review.emptyMode': '空态模式 · 没有卡片。',
     'review.dueCardsPrefix': '到期卡片 · ',
@@ -1230,6 +1242,14 @@ export const dict = {
     'reading.courseRail.collapseTitle': '收起为细轨',
   },
   en: {
+    'cards.tree.independent': 'Independent decks',
+    'cards.tree.unresolved': 'Source unresolved',
+    'cards.sourceUnresolved': 'Source unresolved',
+    'cards.notInReview': 'Not in review',
+    'cards.joinReview': 'Add to review',
+    'cards.leaveReview': 'Remove from review',
+    'cards.activationFailed': 'Could not save review settings. Please retry.',
+
     'app.name': 'Learn Shell',
     'app.tagline': 'pre-v0.1 · W1',
     'app.notFound': 'Not found.',
@@ -1420,7 +1440,7 @@ export const dict = {
     'cards.dormantPrefix': '· ',
     'cards.dormantSuffix': ' not activated',
     'cards.dormantTitle':
-      "These cards belong to lessons you haven't finished yet, so they stay out of the review queue; finishing the lesson activates them.",
+      "Lesson cards enter review after completion. Expand independent cards to add them manually. Cards outside review remain in this collection.",
     'cards.bulkPause': 'Pause',
     'cards.bulkResume': 'Resume',
     'cards.deckChipTitle': 'Review this deck →',
@@ -1434,6 +1454,10 @@ export const dict = {
     'review.hard': 'Hard',
     'review.good': 'Good',
     'review.easy': 'Easy',
+    'review.ratingFailed': 'The rating was not saved. Stay on this card and try again.',
+    'review.alreadyRated': 'This card was already saved in this session; revisiting will not rate it twice.',
+    'review.savedReviewImmutable': 'The rating is saved. U, J, and the arrow keys revisit cards without undoing or writing another review.',
+    'review.refreshFailed': 'Could not refresh the due queue. Try again shortly.',
     'review.feynman': 'Say it first, then compare',
     'review.recording': 'Listening…',
     'review.startMic': 'Speak your answer',
@@ -2364,7 +2388,7 @@ export const dict = {
     'review.doneState.conceptsTouchedLabel': 'Concepts touched:',
     'review.doneState.againHitPrefix': 'You hit an ',
     'review.doneState.againHitSuffix': ' — that card will come back soon, explained a different way.',
-    'review.doneState.reviewAgainButton': 'Review again',
+    'review.doneState.reviewAgainButton': 'Refresh due cards',
     'review.doneState.backToCourses': 'Back to courses',
     'review.emptyMode': 'Empty mode · no cards.',
     'review.dueCardsPrefix': 'Due cards · ',

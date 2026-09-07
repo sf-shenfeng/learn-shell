@@ -1,3 +1,4 @@
+import { activatedForNewFlashcard, getProjectedFlashcards } from '../lib/flashcard-projection';
 // Hono REST write routes — mutations (TEACHING-SPEC-v1 §7 Repository write methods).
 //
 // All routes mounted under /api. Server-side simulator (simulateGrading) is
@@ -70,6 +71,7 @@ import { applyRating, newCardState, type ReviewRatingLabel } from '../lib/fsrs';
 import { parseFlashcardMarkdown, normalizeCardFace, type FlashcardImportParseError } from '../lib/flashcard-import';
 import {
   defaultActivatedForConcept,
+  isFlashcardInReviewQueue,
   tryActivateFlashcardsForLesson,
 } from '../lib/flashcard-activation';
 import { appendSessionEvent } from '../lib/session-events';
@@ -734,6 +736,11 @@ w.post('/reviews', async (c) => {
     }
   }
 
+  const eligibleCard = (await getProjectedFlashcards(db, card.pair_id)).find((f) => f.id === card.id);
+  if (!eligibleCard || !isFlashcardInReviewQueue(eligibleCard, Date.now())) {
+    return c.json({ error: 'card_not_in_review', message: 'This card is not due or is not enabled for review.' }, 409);
+  }
+
   const now = new Date();
   // Agent Surface Hardening 第一批 — "读 FSRS → 算
   // → 更新卡 → 追加 event" (+ the idempotency claim, when a key was given) all
@@ -817,9 +824,8 @@ w.post('/flashcards', async (c) => {
       source_refs: input.source_refs ?? [],
       fsrs_state: newCardState(now),
       paused: false,
-      // 激活门 (迁移 0045): 挂了 concept 的课程卡出生休眠, 等那节课被学完;
-      // 挂不上课的卡出生即激活。四条创建路径共用同一个判据。
-      activated: defaultActivatedForConcept(input.concept_id),
+      // Completed lesson cards join review immediately; independent cards opt in.
+      activated: await activatedForNewFlashcard(db, input.pair_id, input.concept_id),
       created_at: now,
       updated_at: now,
     })
@@ -832,11 +838,8 @@ w.patch('/flashcards/:id', async (c) => {
   // extended from {paused}-only to a partial update; Cards page
   // select-mode "Move to deck" reassigns deck_id, at least one field required.
   //
-  // activated (迁移 0045) 同法放行 —— 这是激活门的人工解锁通道: 自动激活
-  // (lib/flashcard-activation.ts 的三个触发点) 漏掉的卡, 或想反过来手动
-  // 休眠一批卡时的正门。布尔, 与 paused 同校验姿态。FSRS 调度列仍然结构性
-  // 不可达 (lib/flashcard-update.ts 的 PATCHABLE_FIELDS 封闭性不受影响 ——
-  // activated 不进那张白名单, MCP update_flashcard 改不到它)。
+  // activated is a manual opt-in only for independent cards. Course eligibility
+  // is derived from lesson completion; paused is the persistent user opt-out.
   const body = await c.req.json<{ paused?: boolean; deck_id?: string; activated?: boolean }>();
   const patch: { paused?: boolean; deck_id?: string; activated?: boolean; updated_at: Date } = {
     updated_at: new Date(),
@@ -846,6 +849,12 @@ w.patch('/flashcards/:id', async (c) => {
   if (body.activated !== undefined) {
     if (typeof body.activated !== 'boolean') {
       return c.json({ error: 'activated_must_be_boolean' }, 400);
+    }
+    const [stored] = await db.select().from(flashcards).where(eq(flashcards.id, id));
+    if (!stored) return c.json({ error: 'not_found' }, 404);
+    const projected = (await getProjectedFlashcards(db, stored.pair_id)).find((f) => f.id === id)!;
+    if (projected.source_status !== 'independent') {
+      return c.json({ error: 'course_activation_is_automatic', message: 'Use paused to suspend a course card.' }, 409);
     }
     patch.activated = body.activated;
   }
@@ -1576,10 +1585,8 @@ w.post('/pairs/:pairId/flashcards/import', async (c) => {
       source_refs: [],
       fsrs_state: newCardState(now),
       paused: false,
-      // 激活门 (迁移 0045): 导入路径的 concept_id 恒为 null (导入的 markdown
-      // 里没有 concept 这个维度), 所以这里恒为 true —— 挂不上课的卡若默认
-      // 休眠, 就再没有任何一条路能唤醒它们。仍然走同一个判据函数而不是写死
-      // true: 哪天导入支持了 concept, 这里自动跟着改口。
+      // Markdown import has no concept dimension. Independent cards start
+      // dormant and can be explicitly enrolled from the Cards page.
       activated: defaultActivatedForConcept(null),
       created_at: now,
       updated_at: now,
@@ -1745,26 +1752,7 @@ w.post('/submissions', async (c) => {
     }
     return r;
   });
-  // 激活门触发点③ (迁移 0045) — 交了这节课的作业, 也是"学过这一课"的信号
-  // (作业是课的一部分, 能做题说明课已经上到了)。lesson_id 经
-  // exercises.lesson_id 反查; 查不到 pair 或查不到 exercise 就什么都不做,
-  // 不猜。放在写成功之后, try/catch 在 tryActivateFlashcardsForLesson
-  // 内部 —— 提交已经落库了, 不该因为几张卡没叫醒就把 201 变成 500。
-  if (pairId) {
-    try {
-      const [ex] = await db
-        .select({ lesson_id: exercises.lesson_id })
-        .from(exercises)
-        .where(eq(exercises.id, input.exercise_id))
-        .limit(1);
-      if (ex?.lesson_id) {
-        await tryActivateFlashcardsForLesson(db, pairId, ex.lesson_id, 'POST /submissions');
-      }
-    } catch (err) {
-      // 反查这一步本身也不许炸主流程 (上面那层 try/catch 只包住 activate)。
-      console.warn('[flashcard-activation] POST /submissions: lesson lookup failed, skipping activation:', err);
-    }
-  }
+  // Submitting an exercise does not declare its lesson completed.
   // Demo mode only — real grading comes from the agent (grade_exercise)
   if (SIMULATE) void simulateGrading(id, input.learner_answer);
   return c.json(row, 201);

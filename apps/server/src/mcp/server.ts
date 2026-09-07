@@ -1,3 +1,4 @@
+import { activatedForNewFlashcard, getDueFlashcards } from '../lib/flashcard-projection';
 // Learn Shell MCP server.
 //
 // TEACHING-SPEC-v1 §1: Skill files (markdown in `<learn-shell>/skills/`) are
@@ -135,8 +136,6 @@ import { validateSourceMaterialArg, formatSourceMaterialLine } from '../lib/sour
 import { buildTeacherInbox } from '../lib/teacher-inbox';
 import { buildFlashcardContentPatch, updateFlashcardContent } from '../lib/flashcard-update';
 import {
-  defaultActivatedForConcept,
-  isFlashcardInReviewQueue,
   tryActivateFlashcardsForLesson,
 } from '../lib/flashcard-activation';
 import { getLessonReadback, getExerciseReadback, getSubmissionReadback } from '../lib/read-back';
@@ -807,15 +806,7 @@ server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
       data = await db.select().from(courses).where(eq(courses.pair_id, pairId));
       break;
     case 'pair://flashcards/due': {
-      const all = await db.select().from(flashcards).where(eq(flashcards.pair_id, pairId));
-      const now = Date.now();
-      // 与 REST /pairs/:pairId/reviews/due 共用同一条判据 (lib/flashcard-
-      // activation.ts 的 isFlashcardInReviewQueue) —— 这处此前只过滤了
-      // due_at, 连 paused 都漏了: 学习者在 Cards 页按下的"暂停"对老师这一侧
-      // 的 due 视图完全不生效, 挂起的卡照样被推荐来复习。激活门 (迁移 0045)
-      // 这次一并补上, 顺手把 paused 也接回来 —— 两处 due 从此只有一份实现,
-      // 不会再各自跑偏。
-      data = all.filter((f) => isFlashcardInReviewQueue(f, now));
+      data = await getDueFlashcards(db, pairId);
       break;
     }
     case 'pair://exercises/pending': {
@@ -5076,9 +5067,8 @@ async function handleToolCall(
             tags: cardTags ?? [],
             source_refs: [],
             fsrs_state: newCardState(now),
-            // 激活门 (迁移 0045): 挂了 concept 的课程卡出生休眠, 等那节课被
-            // 学完; 挂不上课的卡出生即激活。四条创建路径共用同一个判据。
-            activated: defaultActivatedForConcept(conceptId),
+            // Course cards are eligible after completion, including cards added later.
+            activated: await activatedForNewFlashcard(tx, pairId, conceptId),
             created_at: now,
             updated_at: now,
           });
@@ -5096,14 +5086,13 @@ async function handleToolCall(
           operation: 'add_flashcard',
           resource_id: id,
           created_refs: { flashcard_id: id },
-          // 休眠是静默的话就成了新的坑: 老师建完卡去 pair://flashcards/due
-          // 一看没有这张, 会以为写失败了。明说它在等哪件事。
           human_note:
             `Created flashcard ${id}${concept ? ` · appended to concept ${conceptId}.flashcard_ids` : ''}` +
-            (defaultActivatedForConcept(conceptId)
-              ? ''
-              : ' · dormant until its lesson is completed (it has a concept, so it joins the review queue' +
-                ' once the learner declares that lesson done / the live session for it is completed / a submission lands on it)'),
+            (await activatedForNewFlashcard(db, pairId, conceptId)
+              ? ' · eligible for scheduled review.'
+              : conceptId
+                ? ' · dormant until the learner completes its lesson.'
+                : ' · independent card; enable it in Cards when ready to review.'),
         });
       });
     }

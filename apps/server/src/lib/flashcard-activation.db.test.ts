@@ -6,7 +6,7 @@
 //      这两个函数是本单的全部判断力所在 —— 四条创建路径的默认值和三处
 //      due 查询的过滤都只是在调它们, 所以它们值得一组无库的硬测。
 //   B) DB 集成 (bench 库): 建卡→未激活不入 due→declare-completed 后入 due
-//      →重复激活幂等→concept_id 空的卡默认激活。
+//      →重复激活幂等→concept_id 空的卡默认休眠并可手动加入。
 //
 // 按既定纪律 RUN_DB_TESTS=1 门控 + requireBenchDatabase 硬闸门 (7/19
 // t144test 入侵案后规矩)。node:test / node:assert, zero new deps.
@@ -21,13 +21,13 @@ test('defaultActivatedForConcept: 有 concept 的课程卡默认休眠', () => {
   assert.equal(defaultActivatedForConcept('cpt_time_value'), false);
 });
 
-test('defaultActivatedForConcept: concept_id 空的卡默认激活 (null/undefined/空串/纯空白)', () => {
+test('defaultActivatedForConcept: 独立卡默认休眠，需显式加入复习', () => {
   // 挂不上课就永远等不到激活那道门 —— 这四种形状都必须是 true, 否则导入卡
   // 和手写卡会被永久埋掉。
-  assert.equal(defaultActivatedForConcept(null), true);
-  assert.equal(defaultActivatedForConcept(undefined), true);
-  assert.equal(defaultActivatedForConcept(''), true);
-  assert.equal(defaultActivatedForConcept('   '), true);
+  assert.equal(defaultActivatedForConcept(null), false);
+  assert.equal(defaultActivatedForConcept(undefined), false);
+  assert.equal(defaultActivatedForConcept(''), false);
+  assert.equal(defaultActivatedForConcept('   '), false);
 });
 
 test('isFlashcardInReviewQueue: 未激活的到期卡不进队列 (本单的病根)', () => {
@@ -101,7 +101,7 @@ const dbSkip = process.env.RUN_DB_TESTS !== '1';
 const skipNote = dbSkip && '需 RUN_DB_TESTS=1 + 已迁移的 bench Postgres (待验收时跑)';
 
 test(
-  'activateFlashcardsForLesson: 休眠→不入 due→学完唤醒→入 due→重复幂等; 无 concept 的卡自始激活',
+  'activateFlashcardsForLesson: 休眠→不入 due→学完唤醒→入 due→重复幂等; 无 concept 的卡手动加入',
   { skip: skipNote },
   async () => {
     const { requireBenchDatabase } = await import('./require-bench-db');
@@ -172,7 +172,7 @@ test(
         { id: conceptB, lesson_id: lessonB, course_id: courseId, name: '概念B' },
       ]);
 
-      // ---- 1. 创建默认值分流 ----
+    // ---- 1. 创建默认值 ----
       await db.insert(flashcards).values([
         {
           id: cardA,
@@ -227,13 +227,13 @@ test(
       };
 
       assert.equal((await read(cardA)).activated, false, '挂 concept 的卡出生休眠');
-      assert.equal((await read(cardFree)).activated, true, 'concept_id 空的卡出生即激活');
+      assert.equal((await read(cardFree)).activated, false, 'concept_id 空的卡出生休眠');
 
       // ---- 2. 未激活的到期卡不进复习队列 ----
       const now = Date.now();
       const inQueue = async (id: string) => isFlashcardInReviewQueue(await read(id), now);
       assert.equal(await inQueue(cardA), false, '休眠的到期卡不入 due —— 这就是要治的病');
-      assert.equal(await inQueue(cardFree), true, '散卡照常入 due');
+      assert.equal(await inQueue(cardFree), false, '散卡需手动加入后才进 due');
 
       // ---- 3. 学完 lessonA ⇒ 唤醒 ----
       const n1 = await activateFlashcardsForLesson(db, pairId, lessonA);

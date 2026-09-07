@@ -150,8 +150,8 @@ export const flashcards = pgTable('flashcards', {
   // due_at<=now, 零课时维度 —— 一门课刚建完卡, 整门课(含没上过的课)的卡就
   // 全部堵在复习队列门口。activated 是那道缺失的课时闸: 挂了 concept 的
   // 课程卡出生即休眠 (false), 学完那一课才被 lib/flashcard-activation.ts
-  // 唤醒; 挂不上课的卡 (concept_id 为空的导入卡/手写卡) 出生即激活, 否则
-  // 它们永远等不到那道门。
+  // 唤醒; 挂不上课的卡 (concept_id 为空的导入卡/手写卡) 由学习者在 Cards
+  // 管理页显式加入复习。activated 只缓存独立卡选择；课程卡资格由读端派生。
   //
   // DDL 默认 true 是刻意的: 老库加这一列不许把已有的卡一夜清零 (SWSF Hub
   // 同病修复时的教训)。"课程卡默认休眠"这条规则住应用层

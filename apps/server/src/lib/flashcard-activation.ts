@@ -1,48 +1,14 @@
-// apps/server/src/lib/flashcard-activation.ts — 闪卡激活门 (2026-09-02)。
-//
-// 病: 复习队列"全量涌入"。lib/fsrs.ts 的 newCardState() 让每张新卡
-// due_at = now, 而三处 due 查询 (routes/read.ts 的 REST、mcp/server.ts 的
-// pair://flashcards/due resource、apps/web 的 MockRepository) 只过滤
-// pair_id + !paused + due_at<=now —— 零课时维度。给一门二十课的课程一次
-// 备完卡, 第一天就有几百张"还没上过的课"的卡堵在复习队列门口。
-//
-// 药: flashcards.activated 这道课时闸 (迁移 0045)。三件事, 三个函数:
-//
-//   defaultActivatedForConcept —— 出生默认值。挂了 concept 的课程卡默认
-//     休眠 (false, 等那一课被学完); concept_id 为空的卡默认激活 (true)。
-//     后者不是宽容, 是必须: 导入卡/手写卡挂不上 concept, 也就永远等不到
-//     激活那一刻, 默认 false 等于把它们永久埋掉。四条创建路径 (MCP
-//     add_flashcard / REST POST /flashcards / 批量导入 / seed) 统一问它。
-//
-//   activateFlashcardsForLesson —— 唯一的唤醒入口。只做 false→true,
-//     从不反向; 幂等 (WHERE activated = false 天然把重复调用变成 0 行)。
-//     三个触发点调它: declare-completed (主锚)、live_session_complete
-//     (context_type='lesson')、POST /submissions (经 exercise 反查 lesson)。
-//     三处一律包 try/catch —— 激活是"顺手把该醒的卡叫醒", 不是主流程的
-//     一部分; 它失败绝不能让学习者的"我学完了"或老师的收课失败。
-//
-//   isFlashcardInReviewQueue —— 读侧的唯一判据 (纯函数, DB-free)。
-//     read.ts 与 mcp/server.ts 共用同一份, 免得两处 due 查询再次跑偏
-//     (paused 那次就是: Mock 过滤了、REST 过滤了、MCP resource 漏了)。
-//     apps/web 的 MockRepository 跨 package 引不到这里, 按 LS 既有纪律
-//     镜像同一条判据 (Mock 与 Http 必须对齐)。
-//
-// 归属链: flashcards 表上没有 course_id/lesson_id, 课时归属只能走
-// flashcards.concept_id → concepts.lesson_id (concept_id 可空、无外键,
-// 同 scripts/remap-deck-lessons.ts 的映射路径)。
-
+// Lesson activation cache. Read-side eligibility is derived in flashcard-projection.ts.
+// Completion may wake cards; submitting an exercise does not complete a lesson.
+// The user's durable suspension setting is paused. No helper changes FSRS.
 import { and, eq, inArray } from 'drizzle-orm';
 import type { DbClient } from '../db/client';
 import { concepts, flashcards } from '../db/schema';
 
-/**
- * 新卡的 activated 默认值。
- *
- * 有 concept_id ⇒ 这是一张挂在某节课下的课程卡, 出生休眠, 等那节课被学完。
- * 无 concept_id ⇒ 挂不上课, 也就永远等不到激活; 出生即激活。
- */
-export function defaultActivatedForConcept(conceptId: string | null | undefined): boolean {
-  return conceptId == null || conceptId.trim() === '';
+/** New cards start out of review unless their lesson is already complete.
+ * DB-aware creation paths use activatedForNewFlashcard for that case. */
+export function defaultActivatedForConcept(_conceptId: string | null | undefined): boolean {
+  return false;
 }
 
 /** isFlashcardInReviewQueue 只需要这三样, 不关心卡的其它字段。 */
@@ -113,10 +79,10 @@ export async function activateFlashcardsForLesson(
 }
 
 /**
- * 三个触发点共用的"绝不炸主流程"外壳。
+ * 课时完成触发点共用的"绝不炸主流程"外壳。
  *
- * 激活失败只留一行 warn —— 学习者按"我学完了"、老师收课、作业提交, 这三件
- * 事的成败不该被"顺手叫醒几张卡"绑架。下一次触发 (或人工跑回填脚本 /
+ * 激活失败只留一行 warn —— 学习者按"我学完了"或老师收课的成败不该被
+ * "顺手叫醒几张卡"绑架。下一次完成触发 (或人工跑回填脚本 /
  * PATCH activated) 还有机会补上。
  */
 export async function tryActivateFlashcardsForLesson(

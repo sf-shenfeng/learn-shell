@@ -3,6 +3,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { useHotkeys } from 'react-hotkeys-hook';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { Flashcard } from '@learn-shell/contracts';
+import { cardCourseId, dueReviewCards, scopeDueReviewCards } from '../lib/cardEligibility';
 import { UNGROUPED_COURSE_KEY } from '../review/DeckRail';
 import { useRepository } from '../repository';
 import { usePair } from '../shell/PairProvider';
@@ -36,7 +37,7 @@ import { RecordingBeads, RECORDING_BEADS_FFT_SIZE } from '../review/RecordingBea
  *   works inside the textarea if Whisper is unavailable or the learner wants
  *   even higher accuracy.
  *
- * Hotkeys: V record/pause/resume · Space reveal · 1-4 rate · U undo ·
+ * Hotkeys: V record/pause/resume · Space reveal · 1-4 rate · U review previous ·
  * J/K or ←/→ prev/next (same goPrev/goNext, also reachable via the ‹ ›
  * ghost buttons under the card).
  *
@@ -110,6 +111,10 @@ export default function Review() {
   const [everRevealed, setEverRevealed] = useState(false);
   const [attempt, setAttempt] = useState('');
   const [ratings, setRatings] = useState<ReviewRating[]>([]);
+  const [ratedCardIds, setRatedCardIds] = useState<Set<string>>(() => new Set());
+  const [ratingPending, setRatingPending] = useState(false);
+  const ratingPendingRef = useRef(false);
+  const [ratingError, setRatingError] = useState<string | null>(null);
   // Focus mode — same fullscreen escape hatch as Mind Map (shell/FocusOverlay.tsx).
   // 2026-07-02 反馈: "把 Focus 模式也应用到 Review（复习闪卡）那一页".
   const [focusMode, setFocusMode] = useState(false);
@@ -186,8 +191,7 @@ export default function Review() {
   const lessonParam = searchParams.get('lesson');
   // ?deck= (2026-07-21) — third sovereign scope entry, deep-linked from the
   // Cards page's deck chips / deck scope. Same species as ?lesson=: queue is
-  // that deck's cards (due first in server order, then the not-yet-due
-  // remainder by due_at asc), scope pill with ✕, bypasses the surfacing
+  // that deck's eligible due cards, scope pill with ✕, bypasses the surfacing
   // face, gates off the 课程深链案 course→deck preselect. Internally it's the
   // same deck filter the rail's picked-deck state drives — the difference
   // is it arrives via URL so other pages can land here scoped (入口主权条款:
@@ -261,8 +265,14 @@ export default function Review() {
     void preloadWhisper((msg) => setModelStatus(msg));
   }, []);
 
+  const reviewBusyRef = useRef(false);
+  const [reviewBusy, setReviewBusy] = useState(false);
   const dueQ = useQuery({
     queryKey: ['due-full', pairId],
+    refetchInterval: reviewBusy ? false : 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     queryFn: () => (repo && pairId ? repo.getDueReviews(pairId) : Promise.resolve([])),
     enabled: !!repo && !!pairId,
   });
@@ -286,7 +296,7 @@ export default function Review() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pending-cards'] }),
   });
 
-  const allCards = dueQ.data ?? [];
+  const allCards = useMemo(() => dueReviewCards(dueQ.data ?? [], Date.now()), [dueQ.data]);
 
   // Every card of the pair, not just due — feeds DeckRail's per-deck card
   // browser so any card is one click away (卡组内浏览器案). Same endpoint the
@@ -340,82 +350,51 @@ export default function Review() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessonParam, lessonsQs]);
 
-  // Queue (课时深链扩展): lesson scope beats the deck filter. In lesson mode the
-  // queue is that lesson's cards — due ones first (in due-queue order),
-  // then the not-yet-due remainder (paused cards stay out, same as the
-  // server's due queue) — so the view is useful even when nothing is due.
-  //
-  // Ordering source of truth (浮现式 axiom: most-overdue first, then
-  // due-today, then — in lesson scope — the not-yet-due remainder): the
-  // server's /reviews/due already sorts by fsrs_state.due_at ascending
-  // (apps/server/src/routes/read.ts), so `allCards` and every filter of it
-  // is most-overdue-first by construction — no client re-sort needed. The
-  // lesson-mode remainder is the one slice the server never ordered (it
-  // comes from getAllFlashcards); it gets an explicit due_at-ascending sort
-  // here so the tail is soonest-to-surface-first instead of storage order.
+  // Every entry point filters the same FSRS due queue. Scope narrows it;
+  // a lesson/deck link must never append future or unlearned cards.
   const cards = useMemo(() => {
-    if (lessonParam) {
-      if (!scopedLesson) return [];
-      const conceptIds = new Set<string>(
-        scopedLesson.concept_ids as unknown as string[]
-      );
-      const inLesson = (c: Flashcard) =>
-        c.concept_id != null && conceptIds.has(c.concept_id as unknown as string);
-      const due = allCards.filter(inLesson);
-      const dueIdSet = new Set(due.map((c) => c.id));
-      const rest = allPairCards
-        .filter((c) => inLesson(c) && !dueIdSet.has(c.id) && !c.paused)
-        .sort(
-          (a, b) =>
-            new Date(a.fsrs_state.due_at).getTime() -
-            new Date(b.fsrs_state.due_at).getTime()
-        );
-      return [...due, ...rest];
-    }
-    // ?deck= scope — same due-first-then-remainder shape as lesson mode,
-    // keyed off deck_id (no async resolution needed: deck_id lives on the
-    // card itself).
-    if (deckParam) {
-      const inDeck = (c: Flashcard) =>
-        (c.deck_id as unknown as string) === deckParam;
-      const due = allCards.filter(inDeck);
-      const dueIdSet = new Set(due.map((c) => c.id));
-      const rest = allPairCards
-        .filter((c) => inDeck(c) && !dueIdSet.has(c.id) && !c.paused)
-        .sort(
-          (a, b) =>
-            new Date(a.fsrs_state.due_at).getTime() -
-            new Date(b.fsrs_state.due_at).getTime()
-        );
-      return [...due, ...rest];
-    }
-    return selectedDeck === 'all'
-      ? allCards
-      : allCards.filter((c) => c.deck_id === selectedDeck);
-  }, [lessonParam, scopedLesson, deckParam, allCards, allPairCards, selectedDeck]);
+    const lessonConcepts = new Set<string>(scopedLesson?.concept_ids ?? []);
+    const lessons = lessonsQs.flatMap((q) => q.data ?? [])
+      .filter((lesson) => lesson.course_id === courseParam);
+    const courseConcepts = new Set(lessons.flatMap((lesson) => lesson.concept_ids));
+    const queue = scopeDueReviewCards(allCards, Date.now(), {
+      lessonId: lessonParam, courseId: courseParam, deckId: deckParam,
+    }, (card) => card.concept_id && lessonConcepts.has(card.concept_id) ? scopedLesson?.id : undefined,
+    (card) => card.concept_id && courseConcepts.has(card.concept_id) ? courseParam ?? undefined : undefined);
+    return lessonParam || deckParam || selectedDeck === 'all'
+      ? queue : queue.filter((card) => card.deck_id === selectedDeck);
+  }, [lessonParam, scopedLesson, deckParam, courseParam, lessonsQs, allCards, selectedDeck]);
 
-  // Detour (卡组内浏览器案) — a non-due card picked from the rail's browser. It
-  // takes over the stage; rating it (or J/K) drops back to the untouched
-  // queue position. Detour ratings persist to FSRS as early reviews but
-  // stay out of session tallies/undo — browsing, not queue progress.
+  // A due card selected outside the current scope is a temporary detour;
+  // it must still pass the global review queue gate.
   const [detourCard, setDetourCard] = useState<Flashcard | null>(null);
 
   const card = detourCard ?? cards[index];
+  const currentAlreadyRated = card ? ratedCardIds.has(card.id) : false;
   const total = cards.length;
+
+  // Refresh an idle/finished surface so newly due cards appear automatically.
+  // While answering, preserve the current queue and index. The next idle fetch
+  // starts a fresh queue at its first card instead of carrying an old index.
+  useEffect(() => {
+    if (!reviewBusyRef.current) setIndex(0);
+  }, [dueQ.dataUpdatedAt]);
+  useEffect(() => {
+    reviewBusyRef.current = !!card;
+    setReviewBusy(!!card);
+  }, [card]);
+
 
   const dueIds = useMemo(() => new Set(allCards.map((c) => c.id)), [allCards]);
 
   // 课时深链扩展 — in lesson mode (and deck mode, same queue shape) the queue
-  // includes not-yet-due cards, so the "Due cards · N" badge counts only
-  // the due portion; everywhere else the queue *is* the due set and the
-  // old total stands.
+  // has only due cards; keep the badge tied to the current queue.
   const dueShown =
     lessonParam || deckParam
       ? cards.reduce((n, c) => n + (dueIds.has(c.id) ? 1 : 0), 0)
       : total;
 
-  // Deck list = union of every deck that exists; the count shown stays the
-  // *due* count (queue semantics unchanged), browsing reaches the rest.
+  // The rail names all decks; only eligible due cards can be opened here.
   const deckStats = useMemo(() => {
     const due = new Map<string, number>();
     for (const c of allCards) due.set(c.deck_id, (due.get(c.deck_id) ?? 0) + 1);
@@ -429,13 +408,13 @@ export default function Review() {
 
   const deckCards = useMemo(() => {
     const m = new Map<string, Flashcard[]>();
-    for (const c of allPairCards) {
+    for (const c of allCards) {
       const arr = m.get(c.deck_id);
       if (arr) arr.push(c);
       else m.set(c.deck_id, [c]);
     }
     return m;
-  }, [allPairCards]);
+  }, [allCards]);
 
   const conceptToCourse = useMemo(() => {
     const m = new Map<string, string>();
@@ -462,8 +441,7 @@ export default function Review() {
     const votes = new Map<string, Map<string, number>>(); // deck_id -> (course_id -> count)
     const seenOrder = new Map<string, string[]>(); // deck_id -> course_ids in first-seen order
     for (const c of allPairCards) {
-      if (c.concept_id == null) continue;
-      const courseId = conceptToCourse.get(c.concept_id);
+      const courseId = cardCourseId(c, c.concept_id ? conceptToCourse.get(c.concept_id) : undefined);
       if (!courseId) continue;
       let m = votes.get(c.deck_id);
       if (!m) {
@@ -579,39 +557,10 @@ export default function Review() {
     return () => window.clearTimeout(timer);
   }, [repo, pairId, effectiveDeck, deckCourseId, qc]);
 
-  // 课程深链案 — apply ?course= once every query courseGroups depends on has
-  // settled (courses/lessons/all-flashcards/due), so it doesn't fire on an
-  // empty first-render courseGroups and silently no-op. A course that
-  // resolves to exactly one deck (Cards.tsx's own "Deck typically belongs
-  // to one course" note — the common case) preselects that deck as the
-  // queue filter, same as clicking it in DeckRail. Zero or multiple decks
-  // have no single answer under today's single-selectedDeck model, so the
-  // filter is left at the 'all' default — DeckRail's initialOpenCourseId
-  // (below) still opens that course's accordion so the context isn't lost,
-  // just not auto-filtered. Runs at most once per page load — a manual
-  // deck pick afterward is never overridden.
-  const appliedCourseParamRef = useRef(false);
-  useEffect(() => {
-    // 课时深链扩展: a ?lesson= scope owns the queue — the course→deck preselect
-    // would fight it (deck filter is ignored in lesson mode anyway, but a
-    // highlighted deck in the rail would lie about what's on stage). Same
-    // gate for ?deck= — the deck scope already IS the deck selection.
-    if (!courseParam || lessonParam || deckParam || appliedCourseParamRef.current) return;
-    const stillLoading =
-      coursesQ.isLoading ||
-      allCardsQ.isLoading ||
-      dueQ.isLoading ||
-      lessonsQs.some((q) => q.isLoading);
-    if (stillLoading) return;
-    appliedCourseParamRef.current = true;
-    const group = courseGroups.find((g) => g.courseId === courseParam);
-    if (group && group.decks.length === 1) {
-      setSelectedDeck(group.decks[0]!.deck_id);
-    }
-  }, [courseParam, lessonParam, deckParam, courseGroups, coursesQ.isLoading, allCardsQ.isLoading, dueQ.isLoading, lessonsQs]);
-
+  // Course scopes keep all matching cards, even when a shared deck's
+  // majority provenance places that deck under a different rail heading.
   function jumpToCard(cardId: string) {
-    const target = allPairCards.find((c) => c.id === cardId);
+    const target = allCards.find((c) => c.id === cardId);
     if (!target) return;
     cancelRecording();
     releaseAudio();
@@ -995,47 +944,54 @@ export default function Review() {
     // ignore in 'recognizing' — user should wait for transcript
   };
 
-  function rateCurrent(rating: ReviewRating) {
-    // Persist: server runs real FSRS scheduling + appends a review.rated
-    // session event. Fire-and-forget — the review flow never blocks on it.
-    if (card && repo && pairId) {
-      repo
-        .recordReview({
-          pair_id: pairId,
-          card_id: card.id,
-          rating,
-          answer_text: attempt.trim() || null,
-        })
-        .then(() => {
-          // 缓存陈旧修补 (2026-07-30): 评完一张卡, 左栏 Recents 的到期计数
-          // (['due', pairId], RecentRail 独占的 key) 全库没有任何地方作废过
-          // —— 复习完一整轮回头看, 那个数字还停在开始前, 要等窗口重新聚焦才
-          // 更新。这里补一把。
-          //
-          // 只作废这一个 key, 刻意不碰 Review 页自己的 ['due-full', pairId]:
-          // 那是她当前正在走的这条队列 (按 index 推进), 中途重取会在她手底下
-          // 把队列换掉。两个 key 打的是同一个 getDueReviews —— 边栏那份该新,
-          // 手里这份该稳。
-          qc.invalidateQueries({ queryKey: ['due', pairId] });
-        })
-        .catch((e) => console.error('[recordReview]', e));
+  async function rateCurrent(rating: ReviewRating) {
+    if (!card || !repo || !pairId || ratingPendingRef.current) return;
+    if (ratedCardIds.has(card.id)) {
+      setRatingError(t('review.alreadyRated'));
+      return;
     }
-    if (detourCard) {
-      // Browsing detour — the rating persisted above (FSRS early review),
-      // but queue position and session tallies stay untouched.
-      setDetourCard(null);
+    const ratedCard = card;
+    ratingPendingRef.current = true;
+    setRatingPending(true);
+    setRatingError(null);
+    try {
+      // The server is authoritative: only move the UI after FSRS and the
+      // review.rated event have committed. A 409/network error stays visible
+      // on this card instead of looking like a successful rating.
+      await repo.recordReview({
+        pair_id: pairId,
+        card_id: ratedCard.id,
+        rating,
+        answer_text: attempt.trim() || null,
+      });
+      void qc.invalidateQueries({ queryKey: ['due', pairId] });
+      void qc.invalidateQueries({ queryKey: ['flashcards-all', pairId] });
+      void qc.invalidateQueries({ queryKey: ['all-flashcards', pairId] });
+      setRatedCardIds((ids) => new Set(ids).add(ratedCard.id));
+      setRatings((r) => [...r, rating]);
+      if (detourCard) {
+        setDetourCard(null);
+      } else {
+        const nextIndex = index + 1;
+        if (nextIndex >= cards.length) {
+          // Resume the empty-queue poll synchronously with the final save;
+          // do not wait for the card-derived effect to catch up one render later.
+          reviewBusyRef.current = false;
+          setReviewBusy(false);
+        }
+        setIndex(nextIndex);
+      }
       setRevealed(false);
       setEverRevealed(false);
       setAttempt('');
       cancelRecording();
-      return;
+    } catch (error) {
+      console.error('[recordReview]', error);
+      setRatingError(t('review.ratingFailed'));
+    } finally {
+      ratingPendingRef.current = false;
+      setRatingPending(false);
     }
-    setRatings((r) => [...r, rating]);
-    setIndex((i) => i + 1);
-    setRevealed(false);
-    setEverRevealed(false);
-    setAttempt('');
-    cancelRecording();
   }
 
   // Shared by: Space (first press), the "Reveal & compare" button, and
@@ -1057,6 +1013,8 @@ export default function Review() {
   // straight jump; a detourCard leaves the detour back to the queue's
   // untouched position instead of advancing/receding through it.
   function goPrev() {
+    if (ratingPendingRef.current) return;
+    setRatingError(null);
     if (detourCard) setDetourCard(null);
     else setIndex((i) => Math.max(0, i - 1));
     setRevealed(false);
@@ -1066,11 +1024,19 @@ export default function Review() {
   }
 
   function goNext() {
-    if (!card) return;
+    if (!card || ratingPendingRef.current) return;
+    setRatingError(null);
     // Leaving a detour returns to the queue where it was; advancing past
     // the queue card takes another press.
     if (detourCard) setDetourCard(null);
-    else setIndex((i) => Math.min(cards.length, i + 1));
+    else {
+      const nextIndex = Math.min(cards.length, index + 1);
+      if (nextIndex >= cards.length) {
+        reviewBusyRef.current = false;
+        setReviewBusy(false);
+      }
+      setIndex(nextIndex);
+    }
     setRevealed(false);
     setEverRevealed(false);
     setAttempt('');
@@ -1108,7 +1074,7 @@ export default function Review() {
       const rating = RATINGS[idx];
       if (rating) rateCurrent(rating);
     },
-    [everRevealed, card, detourCard]
+    [everRevealed, card, detourCard, ratingPending, ratedCardIds]
   );
 
   useHotkeys(
@@ -1118,14 +1084,15 @@ export default function Review() {
         setDetourCard(null);
         return;
       }
+      if (ratingPendingRef.current) return;
       if (ratings.length === 0) return;
-      setRatings((r) => r.slice(0, -1));
       setIndex((i) => Math.max(0, i - 1));
+      setRatingError(t('review.savedReviewImmutable'));
       setRevealed(false);
       setEverRevealed(false);
       setAttempt('');
     },
-    [ratings, detourCard]
+    [ratings, detourCard, ratingPending, t]
   );
 
   useHotkeys('k', goNext);
@@ -1176,19 +1143,35 @@ export default function Review() {
     setRevealed(false);
     setEverRevealed(false);
     setAttempt('');
+    setRatingError(null);
     cancelRecording();
     releaseAudio();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDeck, lessonParam, deckParam]);
+  }, [selectedDeck, lessonParam, deckParam, courseParam]);
 
   const restart = () => {
-    setIndex(0);
-    setRatings([]);
+    if (ratingPendingRef.current) return;
+    ratingPendingRef.current = true;
+    setRatingPending(true);
     setDetourCard(null);
     setRevealed(false);
     setEverRevealed(false);
     setAttempt('');
+    setRatingError(null);
+    reviewBusyRef.current = false;
+    setReviewBusy(false);
     releaseAudio();
+    void dueQ.refetch().then(() => {
+      setIndex(0);
+      setRatings([]);
+      setRatedCardIds(new Set());
+    }).catch((error) => {
+      console.error('[review refresh]', error);
+      setRatingError(t('review.refreshFailed'));
+    }).finally(() => {
+      ratingPendingRef.current = false;
+      setRatingPending(false);
+    });
   };
 
   const ratingCount = useMemo(() => {
@@ -1792,7 +1775,17 @@ export default function Review() {
               so it never participates in the rotateY transform. Gated on
               everRevealed (not revealed) so it stays put through later
               front/back toggles (自由翻面案). */}
-          {everRevealed && (
+          {ratingError && (
+            <div role="alert" className="text-[13px] leading-5" style={{ marginTop: '16px', color: 'var(--ls-risk)' }}>
+              {ratingError}
+            </div>
+          )}
+          {everRevealed && currentAlreadyRated && (
+            <div className="text-[13px] leading-5 text-[var(--ls-text-secondary)]" style={{ marginTop: '24px' }}>
+              {t('review.savedReviewImmutable')}
+            </div>
+          )}
+          {everRevealed && !currentAlreadyRated && (
             <div
               className="grid"
               style={{
@@ -1805,8 +1798,9 @@ export default function Review() {
               {RATINGS.map((r, i) => (
                 <button
                   key={r}
-                  onClick={() => rateCurrent(r)}
-                  className="flex flex-col items-center border border-[var(--ls-border-strong)] hover:bg-[var(--ls-panel)] transition-colors duration-[var(--ls-duration-fast)] cursor-pointer"
+                  onClick={() => void rateCurrent(r)}
+                  disabled={ratingPending}
+                  className="flex flex-col items-center border border-[var(--ls-border-strong)] hover:bg-[var(--ls-panel)] transition-colors duration-[var(--ls-duration-fast)] cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                   style={{
                     padding: '12px 0',
                     borderRadius: '8px',
@@ -1893,6 +1887,7 @@ export default function Review() {
             const next = new URLSearchParams(searchParams);
             next.delete('lesson');
             next.delete('deck');
+            next.delete('course');
             if (v === 'all') next.set('view', 'browse');
             if (next.toString() !== searchParams.toString()) {
               setSearchParams(next, { replace: true });

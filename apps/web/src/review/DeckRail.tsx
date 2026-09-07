@@ -220,8 +220,8 @@ export function DeckRail({
           const isUngrouped = group.courseId === UNGROUPED_COURSE_KEY;
           const courseLabel = isUngrouped
             ? lang === 'zh'
-              ? '未分组'
-              : 'Ungrouped'
+              ? '独立卡组'
+              : 'Independent decks'
             : group.topic;
           const courseCardTotal = group.decks.reduce((sum, d) => sum + d.count, 0);
           return (

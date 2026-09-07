@@ -1,3 +1,4 @@
+import { getDueFlashcards, getProjectedFlashcards } from '../lib/flashcard-projection';
 // Hono REST routes — read paths (TEACHING-SPEC-v1 §7 Repository read methods).
 //
 // All routes mounted under /api. Pair-scoped reads use path param :pairId;
@@ -53,7 +54,6 @@ import { getConfidenceAnchors } from '../lib/confidence-anchors';
 import { getCurrentContract } from '../lib/currentContract';
 import { buildTeacherInbox } from '../lib/teacher-inbox';
 import { getLessonAxesForLessons } from '../lib/lesson-state';
-import { isFlashcardInReviewQueue } from '../lib/flashcard-activation';
 
 const r = new Hono();
 
@@ -267,11 +267,7 @@ r.get('/lessons/:id/revisions', async (c) => {
 // 落实同样的"先建的卡在前"稳定序,两端行为对齐。
 r.get('/pairs/:pairId/flashcards', async (c) => {
   const pairId = c.req.param('pairId');
-  const rows = await db
-    .select()
-    .from(flashcards)
-    .where(eq(flashcards.pair_id, pairId))
-    .orderBy(asc(flashcards.created_at));
+  const rows = await getProjectedFlashcards(db, pairId);
   return c.json(rows);
 });
 
@@ -279,21 +275,7 @@ r.get('/pairs/:pairId/reviews/due', async (c) => {
   const pairId = c.req.param('pairId');
   const limitParam = c.req.query('limit');
   const limit = limitParam ? Number(limitParam) : undefined;
-  const all = await db.select().from(flashcards).where(eq(flashcards.pair_id, pairId));
-  // FSRS due_at is inside the jsonb; filter in JS for now (W3 will optimize via generated column / index)
-  // 三道闸合并成一条判据 (lib/flashcard-activation.ts 的
-  // isFlashcardInReviewQueue, 与 MCP resource pair://flashcards/due 共用同
-  // 一份): 未激活不进 (课时门, 迁移 0045 —— 没上过的课的卡不该堵在队列门
-  // 口); 已暂停不进 (batch 9 验收补刀 — Mock's getDueReviews already
-  // filtered these; live path must agree or Suspend is decorative); 未到期
-  // 不进。
-  const now = new Date().getTime();
-  const due = all
-    .filter((f) => isFlashcardInReviewQueue(f, now))
-    .sort(
-      (a, b) =>
-        new Date(a.fsrs_state.due_at).getTime() - new Date(b.fsrs_state.due_at).getTime()
-    );
+  const due = await getDueFlashcards(db, pairId);
   return c.json(limit ? due.slice(0, limit) : due);
 });
 
