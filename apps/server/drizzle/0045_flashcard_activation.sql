@@ -16,8 +16,8 @@
 -- 为什么 DDL 默认 true, 而不是跟应用层的"课程卡默认休眠"一致:
 --   加列这一刻库里已经有几百张卡, 默认 false 会把它们一夜之间全部踢出
 --   复习队列 —— 用户第二天打开看到的是一个空队列, 而不是一个干净的队列。
---   SWSF Hub 修同一个病时踩的正是这个坑。默认 true = 加列不改变任何
---   既有行为, 新规矩只对这一刻之后创建的卡生效。
+--   A previous production rollout hit exactly this failure mode. Default true keeps
+--   the migration non-destructive; application-level eligibility handles new cards.
 --
 -- 为什么不在这支 SQL 里回填:
 --   "哪些存量卡该休眠"要跨 concepts / lesson_progress / exercise_submissions
